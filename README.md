@@ -57,6 +57,15 @@ python3 src_code/scripts/evaluate_3d.py \
 ```
 
 This writes a comparison figure and `metrics.json` beside the checkpoint output.
+It also writes full-volume accuracy/IoU/Dice and affine-aware
+`predicted_mesh.npz` and `target_mesh.npz` files. For a fresh checkpoint:
+
+```bash
+python3 src_code/scripts/evaluate_3d.py \
+  --checkpoint runs/stabilization_v01/checkpoint_epoch_50.pth \
+  --data-dir /path/to/mitea \
+  --volume-resolution 64
+```
 
 ### 3. Visual Gallery
 
@@ -78,6 +87,8 @@ python3 src_code/scripts/train.py \
 ```
 
 This path includes the encoder, Gaussian generator, rasterizer, and pose optimizer, but it is not the strongest current result compared with the direct subject-fit workflow.
+It now trains an ED-to-ES latent ODE and stores its state in the checkpoint.
+Use `--num-sparse-slices 1`, `2`, or `3` to control the input planes.
 
 ## Project Status
 

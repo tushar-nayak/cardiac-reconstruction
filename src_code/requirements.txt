@@ -10,3 +10,4 @@ tqdm
 h5py
 wandb
 matplotlib
+scikit-image
