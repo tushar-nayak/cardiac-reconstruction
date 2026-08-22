@@ -2,9 +2,17 @@ import torch
 import unittest
 
 from src_code.src.occupancy import evaluate_gaussian_occupancy
+from src_code.src.models.gaussian_model import GaussianModel
 
 
 class OccupancyTests(unittest.TestCase):
+  def test_model_scales_remain_finite_when_raw_parameter_is_negative(self):
+    model = GaussianModel(num_gaussians=2, latent_dim=4)
+    with torch.no_grad():
+      model.scales.fill_(-100.0)
+    params = model(torch.zeros(1, 4))
+    self.assertTrue(torch.isfinite(params["scales"]).all())
+
   def test_occupancy_is_bounded_and_monotonic_in_opacity(self):
     points = torch.tensor([[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0]]])
     means = torch.zeros(1, 1, 3)

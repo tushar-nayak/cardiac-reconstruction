@@ -76,7 +76,10 @@ class GaussianModel(nn.Module):
         delta_semantics = params[..., 7:8]
 
         current_means = self.means.unsqueeze(0) + delta_means
-        current_scales = torch.exp(torch.log(self.scales.unsqueeze(0) + 1e-8) + delta_scales * 0.1)
+        # Keep learned base scales positive even if an optimizer step crosses
+        # zero; the previous log(self.scales) formulation could create NaNs.
+        base_scales = F.softplus(self.scales).unsqueeze(0) + 1e-4
+        current_scales = torch.exp(torch.log(base_scales) + delta_scales * 0.1)
         current_opacities = torch.sigmoid(self.opacities.unsqueeze(0) + delta_opacities)
         current_semantics = self.semantic_embeddings.unsqueeze(0) + delta_semantics
         
