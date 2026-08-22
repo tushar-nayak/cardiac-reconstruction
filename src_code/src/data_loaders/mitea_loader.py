@@ -1,5 +1,6 @@
 import os
 import glob
+import random
 import torch
 import torch.nn.functional as F
 import nibabel as nib
@@ -7,7 +8,7 @@ import numpy as np
 from torch.utils.data import Dataset
 
 class MITEADataset(Dataset):
-    def __init__(self, data_dir, split='train', num_sparse_slices=3, transform=None):
+    def __init__(self, data_dir, split='train', num_sparse_slices=3, transform=None, split_seed=17):
         """
         Dataset for MITEA data, simulating sparse 2D slice inputs for 4D reconstruction.
         """
@@ -21,13 +22,23 @@ class MITEADataset(Dataset):
         all_files = glob.glob(os.path.join(self.images_dir, 'MITEA_*_scan1_ED.nii.gz'))
         subject_ids = sorted([os.path.basename(f).split('_scan')[0] for f in all_files])
         
-        # Simple split (can be improved later)
-        if split == 'train':
-            self.subject_ids = subject_ids[:110]
-        elif split == 'val':
-            self.subject_ids = subject_ids[110:125]
-        else:
-            self.subject_ids = subject_ids[125:]
+        if split not in {'train', 'val', 'test'}:
+            raise ValueError("split must be one of: train, val, test")
+        if not subject_ids:
+            raise FileNotFoundError(f"No MITEA ED scans found under {self.images_dir}")
+
+        # Shuffle once with a recorded seed so the split is reproducible and
+        # does not depend on filesystem enumeration order.
+        shuffled = list(subject_ids)
+        random.Random(split_seed).shuffle(shuffled)
+        n = len(shuffled)
+        train_end = max(1, int(round(n * 0.8)))
+        val_end = min(n, train_end + max(1, int(round(n * 0.1))))
+        self.subject_ids = {
+            'train': shuffled[:train_end],
+            'val': shuffled[train_end:val_end],
+            'test': shuffled[val_end:],
+        }[split]
 
     def __len__(self):
         return len(self.subject_ids)

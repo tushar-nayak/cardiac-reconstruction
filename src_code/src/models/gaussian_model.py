@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from src_code.src.occupancy import evaluate_gaussian_occupancy
 
 class GaussianModel(nn.Module):
     def __init__(self, num_gaussians=1000, latent_dim=128):
@@ -93,24 +94,10 @@ class GaussianModel(nn.Module):
         Non-saturating occupancy aggregation:
         Soft occupancy = 1 - exp(-sum(alpha_i * weight_i))
         """
-        B, N, _ = points.shape
-        device = points.device
-        all_vals = []
-
-        means = gaussian_params['means'] 
-        scales = gaussian_params['scales'] 
-        alpha = gaussian_params['opacities']
-
-        for i in range(0, N, chunk_size):
-            p_chunk = points[:, i:i+chunk_size] 
-            
-            diff = p_chunk.unsqueeze(2) - means.unsqueeze(1)
-            exponent = -0.5 * torch.sum((diff / (scales.unsqueeze(1) + 1e-8))**2, dim=-1)
-            weights = torch.exp(exponent)
-            
-            density = torch.sum(alpha.transpose(-1, -2) * weights, dim=-1)
-            occ_chunk = 1.0 - torch.exp(-density)
-            
-            all_vals.append(occ_chunk)
-            
-        return torch.cat(all_vals, dim=1)
+        return evaluate_gaussian_occupancy(
+            points,
+            gaussian_params['means'],
+            gaussian_params['scales'],
+            gaussian_params['opacities'],
+            chunk_size=chunk_size,
+        )

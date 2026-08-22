@@ -1,7 +1,7 @@
 torch>=2.0.0
 torchvision
 torchdiffeq
-pytorch3d
+# PyTorch3D is optional; pose conversion has a native implementation.
 numpy
 scipy
 nibabel

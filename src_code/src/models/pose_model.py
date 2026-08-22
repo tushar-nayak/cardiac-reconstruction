@@ -1,6 +1,17 @@
 import torch
 import torch.nn as nn
-from pytorch3d.transforms import axis_angle_to_matrix
+
+
+def axis_angle_to_matrix(axis_angle):
+    """Convert axis-angle vectors to rotation matrices without PyTorch3D."""
+    theta = torch.linalg.vector_norm(axis_angle, dim=-1, keepdim=True)
+    axis = axis_angle / theta.clamp_min(1e-8)
+    x, y, z = axis.unbind(-1)
+    zeros = torch.zeros_like(x)
+    K = torch.stack((zeros, -z, y, z, zeros, -x, -y, x, zeros), dim=-1).reshape(*axis.shape[:-1], 3, 3)
+    eye = torch.eye(3, device=axis.device, dtype=axis.dtype).expand_as(K)
+    # Stable Rodrigues formula; the small-angle limit is identity.
+    return eye + torch.sin(theta)[..., None] * K + (1 - torch.cos(theta))[..., None] * (K @ K)
 
 class PoseOptimizer(nn.Module):
     def __init__(self, num_subjects, num_slices=3):

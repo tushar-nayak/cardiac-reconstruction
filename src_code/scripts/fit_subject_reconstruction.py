@@ -12,6 +12,7 @@ import tqdm
 
 from src_code.src.data_loaders.mitea_loader import MITEADataset
 from src_code.src.utils.coord_utils import sample_volume_at_points
+from src_code.src.occupancy import evaluate_gaussian_occupancy
 
 DEFAULT_DATA_DIR = "/home/sofa/host_dir/cardiac_reconstruction_project/cap-mitea/mitea"
 
@@ -44,30 +45,19 @@ def gaussian_params(means, log_scales, raw_opacities):
     }
 
 
-def evaluate_occupancy(points, params, chunk_size=1024):
-    means = params["means"]
-    scales = params["scales"]
-    opacities = params["opacities"]
-    values = []
-
-    for start in range(0, points.shape[1], chunk_size):
-        chunk = points[:, start:start + chunk_size]
-        diff = chunk.unsqueeze(2) - means.unsqueeze(1)
-        exponent = -0.5 * torch.sum((diff / (scales.unsqueeze(1) + 1e-8)) ** 2, dim=-1)
-        density = torch.sum(opacities.transpose(-1, -2) * torch.exp(exponent), dim=-1)
-        values.append(1.0 - torch.exp(-density))
-
-    return torch.cat(values, dim=1)
-
-
 def sample_points(volume, affine, num_samples, device):
     occ_indices = torch.nonzero(volume)
-    num_pos = num_samples // 2
-    num_uniform = num_samples - num_pos
+    num_pos = num_samples // 3
+    num_cavity = num_samples // 3
+    num_uniform = num_samples - num_pos - num_cavity
 
     selected = occ_indices[torch.randint(0, len(occ_indices), (num_pos,))]
     pts_pos_img = selected[:, [2, 1, 0]].float().to(device)
     pts_pos_img = pts_pos_img + torch.randn_like(pts_pos_img) * 1.5
+
+    centroid = occ_indices.float().mean(dim=0)[[2, 1, 0]].to(device)
+    spread = occ_indices.float().std(dim=0, unbiased=False)[[2, 1, 0]].to(device).clamp_min(4.0)
+    pts_cavity_img = centroid + torch.randn(num_cavity, 3, device=device) * spread * 0.15
 
     D, H, W = volume.shape
     pts_uniform_img = torch.stack([
@@ -76,16 +66,18 @@ def sample_points(volume, affine, num_samples, device):
         torch.rand(num_uniform, device=device) * (D - 1),
     ], dim=-1)
 
-    points_img = torch.cat([pts_pos_img, pts_uniform_img], dim=0)
+    points_img = torch.cat([pts_pos_img, pts_cavity_img, pts_uniform_img], dim=0)
     points_world = image_to_world(points_img, affine, device)
     sample_weights = torch.cat([
         torch.full((num_pos,), 1.5, device=device),
+        torch.full((num_cavity,), 8.0, device=device),
         torch.full((num_uniform,), 2.0, device=device),
     ]).unsqueeze(0)
     return points_world.unsqueeze(0), sample_weights
 
 
 def fit(args):
+    torch.manual_seed(args.seed)
     os.makedirs(args.run_dir, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset = MITEADataset(args.data_dir, split=args.split)
@@ -100,7 +92,9 @@ def fit(args):
     for step in pbar:
         points, sample_weights = sample_points(volume, affine, args.num_samples, device)
         params = gaussian_params(means, log_scales, raw_opacities)
-        pred = evaluate_occupancy(points, params)
+        pred = evaluate_gaussian_occupancy(
+            points, params["means"], params["scales"], params["opacities"]
+        )
         target = sample_volume_at_points([volume], points, affine.unsqueeze(0))
         loss_occ = F.binary_cross_entropy(pred, target, weight=sample_weights)
         loss_scale = torch.mean(F.softplus(log_scales))
@@ -122,6 +116,7 @@ def fit(args):
         "scales": params["scales"].detach().cpu(),
         "opacities": params["opacities"].detach().cpu(),
         "config": vars(args),
+        "seed": args.seed,
     }, os.path.join(args.run_dir, "subject_fit.pth"))
 
 
@@ -137,4 +132,5 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=3e-3)
     parser.add_argument("--scale-loss-weight", type=float, default=0.002)
     parser.add_argument("--opacity-loss-weight", type=float, default=0.01)
+    parser.add_argument("--seed", type=int, default=17)
     fit(parser.parse_args())
