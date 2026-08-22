@@ -55,13 +55,23 @@ def sample_query_points(volume, affine, num_samples, device):
     pts_cavity_h = torch.cat([pts_cavity_img, torch.ones(num_cavity, 1, device=device)], dim=-1)
     pts_cavity = (pts_cavity_h @ affine.to(device).T)[:, :3]
 
-    pts_uniform = (torch.rand(num_uniform, 3, device=device) * 400.0) - 200.0
+    # Sample negatives in the actual image volume, then transform them with
+    # the subject affine. Sampling world-space [-200, 200] ignored orientation
+    # and left large parts of the loss unrelated to the anatomy.
+    d, h, w = volume.shape
+    pts_uniform_img = torch.stack([
+        torch.rand(num_uniform, device=device) * (w - 1),
+        torch.rand(num_uniform, device=device) * (h - 1),
+        torch.rand(num_uniform, device=device) * (d - 1),
+    ], dim=-1)
+    pts_uniform_h = torch.cat([pts_uniform_img, torch.ones(num_uniform, 1, device=device)], dim=-1)
+    pts_uniform = (pts_uniform_h @ affine.to(device).T)[:, :3]
 
     points = torch.cat([pts_pos, pts_cavity, pts_uniform], dim=0)
     weights = torch.cat([
         torch.ones(num_pos, device=device),
         torch.full((num_cavity,), 25.0, device=device),
-        torch.full((num_uniform,), 5.0, device=device),
+        torch.full((num_uniform,), 8.0, device=device),
     ])
     return points, weights
 
@@ -145,12 +155,16 @@ def train(args):
             weights = torch.where(
                 target_occ_ed > 0.5,
                 query_weights,
-                query_weights * 4.0,
+                query_weights * args.negative_loss_weight,
             )
             loss_occ = F.binary_cross_entropy(occ_pred_ed, target_occ_ed, weight=weights)
             occ_pred_es = gaussian_model.evaluate_occupancy(query_points_es, params_es)
             target_occ_es = sample_volume_at_points(batch['occupancy_es'], query_points_es, batch['affine'].to(device))
-            weights_es = torch.where(target_occ_es > 0.5, query_weights_es, query_weights_es * 4.0)
+            weights_es = torch.where(
+                target_occ_es > 0.5,
+                query_weights_es,
+                query_weights_es * args.negative_loss_weight,
+            )
             loss_occ = 0.5 * (loss_occ + F.binary_cross_entropy(occ_pred_es, target_occ_es, weight=weights_es))
             loss_dynamics = F.smooth_l1_loss(z_es, z_es_target.detach())
 
@@ -209,6 +223,7 @@ if __name__ == "__main__":
     parser.add_argument("--image-loss-weight", type=float, default=1.0)
     parser.add_argument("--sparse-loss-weight", type=float, default=0.1)
     parser.add_argument("--temporal-loss-weight", type=float, default=0.1)
+    parser.add_argument("--negative-loss-weight", type=float, default=8.0)
     parser.add_argument("--checkpoint-every", type=int, default=10)
     args = parser.parse_args()
     train(args)
