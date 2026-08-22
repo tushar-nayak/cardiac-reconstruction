@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from src_code.src.data_loaders.mitea_loader import MITEADataset
 from src_code.src.models.ode_model import LatentEncoder
+from src_code.src.models.ode_model import CardiacODE
 from src_code.src.models.gaussian_model import GaussianModel
 from src_code.src.models.pose_model import PoseOptimizer
 from src_code.src.utils.coord_utils import sample_volume_at_points
@@ -23,8 +24,10 @@ def collate_fn(batch):
         'subject': [d['subject'] for d in batch],
         'index': torch.tensor([d['index'] for d in batch]),
         'sparse_slices_ed': torch.stack([d['sparse_slices_ed'] for d in batch]),
+        'sparse_slices_es': torch.stack([d['sparse_slices_es'] for d in batch]),
         'poses_ed': [d['poses_ed'] for d in batch],
         'occupancy_ed': [d['occupancy_ed'] for d in batch],
+        'occupancy_es': [d['occupancy_es'] for d in batch],
         'affine': torch.stack([d['affine'] for d in batch])
     }
 
@@ -84,12 +87,13 @@ def train(args):
     )
 
     encoder = LatentEncoder(input_channels=args.num_sparse_slices, latent_dim=args.latent_dim).to(device)
+    ode = CardiacODE(latent_dim=args.latent_dim).to(device)
     gaussian_model = GaussianModel(num_gaussians=args.num_gaussians, latent_dim=args.latent_dim).to(device)
     rasterizer = RadiologicalRasterizer().to(device)
     pose_optimizer = PoseOptimizer(num_subjects=len(dataset)).to(device)
 
     optimizer = torch.optim.Adam(
-        list(encoder.parameters()) + list(gaussian_model.parameters()) + list(pose_optimizer.parameters()),
+        list(encoder.parameters()) + list(ode.parameters()) + list(gaussian_model.parameters()) + list(pose_optimizer.parameters()),
         lr=args.lr
     )
 
@@ -100,15 +104,21 @@ def train(args):
                 gaussian_model.initialize_from_voxels(batch['occupancy_ed'], batch['affine'])
             
             input_ed = batch['sparse_slices_ed'].to(device)
+            input_es = batch['sparse_slices_es'].to(device)
             subject_indices = batch['index'].to(device)
             B = input_ed.shape[0]
             
             z_ed = encoder(input_ed)
+            z_es_target = encoder(input_es)
+            z_es = ode(z_ed, torch.tensor([0.0, 1.0], device=device))[-1]
             params_ed = gaussian_model(z_ed)
+            params_es = gaussian_model(z_es)
             refined_poses_ed = pose_optimizer(subject_indices, batch['poses_ed'])
 
             query_points = []
             query_weights = []
+            query_points_es = []
+            query_weights_es = []
             for i in range(B):
                 pts_i, weights_i = sample_query_points(
                     batch['occupancy_ed'][i],
@@ -118,9 +128,16 @@ def train(args):
                 )
                 query_points.append(pts_i)
                 query_weights.append(weights_i)
+                pts_es, weights_es = sample_query_points(
+                    batch['occupancy_es'][i], batch['affine'][i], args.num_samples, device
+                )
+                query_points_es.append(pts_es)
+                query_weights_es.append(weights_es)
 
             query_points = torch.stack(query_points)
             query_weights = torch.stack(query_weights)
+            query_points_es = torch.stack(query_points_es)
+            query_weights_es = torch.stack(query_weights_es)
 
             occ_pred_ed = gaussian_model.evaluate_occupancy(query_points, params_ed)
             target_occ_ed = sample_volume_at_points(batch['occupancy_ed'], query_points, batch['affine'].to(device))
@@ -131,6 +148,11 @@ def train(args):
                 query_weights * 4.0,
             )
             loss_occ = F.binary_cross_entropy(occ_pred_ed, target_occ_ed, weight=weights)
+            occ_pred_es = gaussian_model.evaluate_occupancy(query_points_es, params_es)
+            target_occ_es = sample_volume_at_points(batch['occupancy_es'], query_points_es, batch['affine'].to(device))
+            weights_es = torch.where(target_occ_es > 0.5, query_weights_es, query_weights_es * 4.0)
+            loss_occ = 0.5 * (loss_occ + F.binary_cross_entropy(occ_pred_es, target_occ_es, weight=weights_es))
+            loss_dynamics = F.smooth_l1_loss(z_es, z_es_target.detach())
 
             loss_img = torch.tensor(0.0).to(device)
             for b in range(B):
@@ -143,20 +165,27 @@ def train(args):
             
             loss_img = loss_img / (B * len(refined_poses_ed[0]))
             loss_sparse = torch.mean(params_ed['opacities']) + 0.01 * torch.mean(params_ed['scales'])
-            loss = loss_occ + args.image_loss_weight * loss_img + args.sparse_loss_weight * loss_sparse
+            loss = (
+                loss_occ
+                + args.image_loss_weight * loss_img
+                + args.sparse_loss_weight * loss_sparse
+                + args.temporal_loss_weight * loss_dynamics
+            )
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            pbar.set_postfix({'loss': f"{loss.item():.4f}", 'occ': f"{loss_occ.item():.4f}", 'img': f"{loss_img.item():.4f}"})
+            pbar.set_postfix({'loss': f"{loss.item():.4f}", 'occ': f"{loss_occ.item():.4f}", 'dyn': f"{loss_dynamics.item():.4f}"})
 
         if (epoch + 1) % args.checkpoint_every == 0:
             torch.save({
                 'format_version': 2,
                 'model_type': 'encoder_gaussian_occupancy',
+                'temporal_model': 'latent_ode_ed_to_es',
                 'epoch': epoch,
                 'config': vars(args),
                 'encoder_state_dict': encoder.state_dict(),
+                'ode_state_dict': ode.state_dict(),
                 'gaussian_model_state_dict': gaussian_model.state_dict(),
                 'pose_optimizer_state_dict': pose_optimizer.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
@@ -179,6 +208,7 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--image-loss-weight", type=float, default=1.0)
     parser.add_argument("--sparse-loss-weight", type=float, default=0.1)
+    parser.add_argument("--temporal-loss-weight", type=float, default=0.1)
     parser.add_argument("--checkpoint-every", type=int, default=10)
     args = parser.parse_args()
     train(args)

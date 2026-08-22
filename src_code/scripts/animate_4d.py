@@ -21,13 +21,17 @@ def animate(args):
     output_dir = args.output_dir or os.path.join(os.path.dirname(args.checkpoint), "animations")
     os.makedirs(output_dir, exist_ok=True)
 
-    encoder = LatentEncoder(input_channels=3, latent_dim=args.latent_dim).to(device)
+    checkpoint = torch.load(args.checkpoint, map_location=device)
+    config = checkpoint.get('config', {})
+    num_sparse_slices = int(config.get('num_sparse_slices', 3))
+    encoder = LatentEncoder(input_channels=num_sparse_slices, latent_dim=args.latent_dim).to(device)
     ode = CardiacODE(latent_dim=args.latent_dim).to(device)
     gaussian_model = GaussianModel(num_gaussians=args.num_gaussians, latent_dim=args.latent_dim).to(device)
 
     print(f"Loading checkpoint from {args.checkpoint}...")
-    checkpoint = torch.load(args.checkpoint, map_location=device)
     encoder.load_state_dict(checkpoint['encoder_state_dict'])
+    if 'ode_state_dict' not in checkpoint:
+        raise ValueError("Checkpoint has no trained ODE; retrain with the current train.py")
     ode.load_state_dict(checkpoint['ode_state_dict'])
     gaussian_model.load_state_dict(checkpoint['gaussian_model_state_dict'])
     
@@ -35,7 +39,12 @@ def animate(args):
     ode.eval()
     gaussian_model.eval()
 
-    dataset = MITEADataset(args.data_dir, split=args.split)
+    dataset = MITEADataset(
+        args.data_dir,
+        split=args.split,
+        num_sparse_slices=num_sparse_slices,
+        split_seed=int(config.get('split_seed', 17)),
+    )
     sample = dataset[args.sample_index]
     input_ed = sample['sparse_slices_ed'].unsqueeze(0).to(device)
     affine = sample['affine']
@@ -83,8 +92,8 @@ def animate(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", type=str, default="runs/smoke_run_01/checkpoint_epoch_1.pth")
-    parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR)
+    parser.add_argument("--checkpoint", type=str, required=True)
+    parser.add_argument("--data-dir", type=str, required=True)
     parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--split", type=str, default="val")
     parser.add_argument("--sample-index", type=int, default=0)
