@@ -15,8 +15,6 @@ from src_code.src.models.ode_model import LatentEncoder
 from src_code.src.models.gaussian_model import GaussianModel
 from src_code.src.utils.coord_utils import sample_volume_at_points
 
-DEFAULT_DATA_DIR = "/home/sofa/host_dir/cardiac_reconstruction_project/cap-mitea/mitea"
-
 def infer_num_gaussians(checkpoint, fallback):
     if checkpoint.get('type') == 'subject_gaussian_fit':
         return int(checkpoint['num_gaussians'])
@@ -176,7 +174,7 @@ def evaluate_3d(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, required=True)
-    parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR)
+    parser.add_argument("--data-dir", type=str, required=True)
     parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--split", type=str, default="val")
     parser.add_argument("--sample-index", type=int, default=0)

@@ -13,8 +13,6 @@ from src_code.src.data_loaders.mitea_loader import MITEADataset
 from src_code.src.models.ode_model import LatentEncoder
 from src_code.src.models.gaussian_model import GaussianModel
 
-DEFAULT_DATA_DIR = "/home/sofa/host_dir/cardiac_reconstruction_project/cap-mitea/mitea"
-
 def infer_num_gaussians(checkpoint, fallback):
     if checkpoint.get('type') == 'subject_gaussian_fit':
         return int(checkpoint['num_gaussians'])
@@ -87,7 +85,7 @@ def generate_gallery(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default="runs/stabilization_v01/checkpoint_epoch_20.pth")
-    parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR)
+    parser.add_argument("--data-dir", type=str, required=True)
     parser.add_argument("--output-path", type=str, default=None)
     parser.add_argument("--split", type=str, default="val")
     parser.add_argument("--sample-index", type=int, default=0)

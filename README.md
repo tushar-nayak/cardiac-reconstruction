@@ -86,6 +86,18 @@ This path includes the encoder, Gaussian generator, rasterizer, and pose optimiz
 - `Experimental`: Neural ODE dynamics and 4D animation tooling.
 - `Not current mainline`: VLM-driven semantic tracking and dense multi-view 3DGS claims.
 
+The original pre-overhaul implementation is preserved on the pushed `legacy`
+branch. The active `main` branch now uses a shared occupancy implementation,
+reproducible subject splits, seeded fitting, a maintained evaluation entry
+point, and standard-library tests. Dataset paths are required explicitly so
+results do not depend on the developer machine that created the checkpoint.
+
+Run the lightweight checks with:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
 The MITEA setup currently used here is best suited for static 3D reconstruction and limited ED/ES experiments, not for a full dense multi-view RGB 3DGS pipeline.
 
 ## Documentation

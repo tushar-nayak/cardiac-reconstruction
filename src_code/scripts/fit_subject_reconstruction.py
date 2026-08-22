@@ -14,9 +14,6 @@ from src_code.src.data_loaders.mitea_loader import MITEADataset
 from src_code.src.utils.coord_utils import sample_volume_at_points
 from src_code.src.occupancy import evaluate_gaussian_occupancy
 
-DEFAULT_DATA_DIR = "/home/sofa/host_dir/cardiac_reconstruction_project/cap-mitea/mitea"
-
-
 def image_to_world(points_img, affine, device):
     points_h = torch.cat([points_img, torch.ones(points_img.shape[0], 1, device=device)], dim=-1)
     return (points_h @ affine.to(device).T)[:, :3]
@@ -122,7 +119,7 @@ def fit(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR)
+    parser.add_argument("--data-dir", type=str, required=True)
     parser.add_argument("--run-dir", type=str, default="runs/subject_fit_v01")
     parser.add_argument("--split", type=str, default="val")
     parser.add_argument("--sample-index", type=int, default=0)
