@@ -14,6 +14,7 @@ from src_code.src.data_loaders.mitea_loader import MITEADataset
 from src_code.src.models.ode_model import LatentEncoder
 from src_code.src.models.gaussian_model import GaussianModel
 from src_code.src.utils.coord_utils import sample_volume_at_points
+from src_code.src.metrics import binary_metrics, save_mesh_npz, volume_to_mesh
 
 def infer_num_gaussians(checkpoint, fallback):
     if checkpoint.get('type') == 'subject_gaussian_fit':
@@ -30,7 +31,7 @@ def load_params(checkpoint, sample, device, latent_dim, num_gaussians):
             'opacities': checkpoint['opacities'].to(device),
         }
 
-    encoder = LatentEncoder(3, latent_dim).to(device)
+    encoder = LatentEncoder(sample['sparse_slices_ed'].shape[0], latent_dim).to(device)
     gaussian_model = GaussianModel(num_gaussians, latent_dim).to(device)
     encoder.load_state_dict(checkpoint['encoder_state_dict'])
     gaussian_model.load_state_dict(checkpoint['gaussian_model_state_dict'])
@@ -85,7 +86,13 @@ def evaluate_3d(args):
     checkpoint = torch.load(args.checkpoint, map_location=device)
     num_gaussians = infer_num_gaussians(checkpoint, args.num_gaussians)
 
-    dataset = MITEADataset(args.data_dir, split=args.split)
+    config = checkpoint.get('config', {})
+    dataset = MITEADataset(
+        args.data_dir,
+        split=args.split,
+        num_sparse_slices=int(config.get('num_sparse_slices', 3)),
+        split_seed=int(config.get('split_seed', 17)),
+    )
     sample = dataset[args.sample_index]
     gt_vol = sample['occupancy_ed'].cpu().numpy() # (D, H, W)
     affine = sample['affine']
@@ -127,6 +134,21 @@ def evaluate_3d(args):
         metric_pred = model.evaluate_occupancy(metric_points.unsqueeze(0), params_ed)
         metric_target = sample_volume_at_points([sample['occupancy_ed']], metric_points.unsqueeze(0), affine.unsqueeze(0).to(device))
 
+        # Evaluate the entire canonical volume on a common grid. This is less
+        # optimistic than the old hand-picked point sample and is also the
+        # source used for reproducible mesh extraction.
+        res = args.volume_resolution
+        z = torch.linspace(0, D - 1, res, device=device)
+        y = torch.linspace(0, H - 1, res, device=device)
+        x = torch.linspace(0, W - 1, res, device=device)
+        grid_z, grid_y, grid_x = torch.meshgrid(z, y, x, indexing='ij')
+        grid_img = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3)
+        grid_world = image_to_world(grid_img, affine, device)
+        pred_volume = model.evaluate_occupancy(grid_world.unsqueeze(0), params_ed).reshape(res, res, res)
+        target_volume = sample_volume_at_points(
+            [sample['occupancy_ed']], grid_world.unsqueeze(0), affine.unsqueeze(0).to(device)
+        ).reshape(res, res, res)
+
     pred_mask = metric_pred > args.threshold
     target_mask = metric_target > 0.5
     intersection = torch.logical_and(pred_mask, target_mask).sum().item()
@@ -147,6 +169,22 @@ def evaluate_3d(args):
             metric_pred[:, regions['wall']].mean() - metric_pred[:, regions['centroid']].mean()
         ).item(),
     }
+    metrics['full_volume'] = binary_metrics(
+        pred_volume.cpu().numpy(), target_volume.cpu().numpy(), args.threshold
+    )
+
+    scale_x = (W - 1) / max(args.volume_resolution - 1, 1)
+    scale_y = (H - 1) / max(args.volume_resolution - 1, 1)
+    scale_z = (D - 1) / max(args.volume_resolution - 1, 1)
+    grid_affine = affine.cpu().numpy() @ torch.diag(torch.tensor(
+        [scale_x, scale_y, scale_z, 1.0], dtype=torch.float32
+    )).numpy()
+    pred_vertices, pred_faces = volume_to_mesh(pred_volume.cpu().numpy(), grid_affine, args.threshold)
+    target_vertices, target_faces = volume_to_mesh(target_volume.cpu().numpy(), grid_affine, 0.5)
+    save_mesh_npz(os.path.join(output_dir, 'predicted_mesh.npz'), pred_vertices, pred_faces)
+    save_mesh_npz(os.path.join(output_dir, 'target_mesh.npz'), target_vertices, target_faces)
+    metrics['predicted_mesh'] = {'vertices': len(pred_vertices), 'faces': len(pred_faces)}
+    metrics['target_mesh'] = {'vertices': len(target_vertices), 'faces': len(target_faces)}
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     
@@ -182,5 +220,6 @@ if __name__ == "__main__":
     parser.add_argument("--num-gaussians", type=int, default=1000)
     parser.add_argument("--slice-resolution", type=int, default=128)
     parser.add_argument("--metric-points", type=int, default=3000)
+    parser.add_argument("--volume-resolution", type=int, default=64)
     parser.add_argument("--threshold", type=float, default=0.5)
     evaluate_3d(parser.parse_args())

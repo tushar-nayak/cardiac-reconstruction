@@ -63,10 +63,18 @@ def sample_query_points(volume, affine, num_samples, device):
     return points, weights
 
 def train(args):
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
     os.makedirs(args.run_dir, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dataset = MITEADataset(args.data_dir, split=args.split)
+    dataset = MITEADataset(
+        args.data_dir,
+        split=args.split,
+        num_sparse_slices=args.num_sparse_slices,
+        split_seed=args.split_seed,
+    )
     dataloader = DataLoader(
         dataset,
         batch_size=args.batch_size,
@@ -75,7 +83,7 @@ def train(args):
         collate_fn=collate_fn,
     )
 
-    encoder = LatentEncoder(input_channels=3, latent_dim=args.latent_dim).to(device)
+    encoder = LatentEncoder(input_channels=args.num_sparse_slices, latent_dim=args.latent_dim).to(device)
     gaussian_model = GaussianModel(num_gaussians=args.num_gaussians, latent_dim=args.latent_dim).to(device)
     rasterizer = RadiologicalRasterizer().to(device)
     pose_optimizer = PoseOptimizer(num_subjects=len(dataset)).to(device)
@@ -144,6 +152,8 @@ def train(args):
 
         if (epoch + 1) % args.checkpoint_every == 0:
             torch.save({
+                'format_version': 2,
+                'model_type': 'encoder_gaussian_occupancy',
                 'epoch': epoch,
                 'config': vars(args),
                 'encoder_state_dict': encoder.state_dict(),
@@ -154,7 +164,7 @@ def train(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", type=str, default="/home/sofa/host_dir/cardiac_reconstruction_project/cap-mitea/mitea")
+    parser.add_argument("--data-dir", type=str, required=True)
     parser.add_argument("--run-dir", type=str, default="runs/stabilization_v01")
     parser.add_argument("--split", type=str, default="train")
     parser.add_argument("--epochs", type=int, default=50)
@@ -163,6 +173,9 @@ if __name__ == "__main__":
     parser.add_argument("--latent-dim", type=int, default=128)
     parser.add_argument("--num-gaussians", type=int, default=1000)
     parser.add_argument("--num-samples", type=int, default=2000)
+    parser.add_argument("--num-sparse-slices", type=int, default=3, choices=(1, 2, 3))
+    parser.add_argument("--split-seed", type=int, default=17)
+    parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--image-loss-weight", type=float, default=1.0)
     parser.add_argument("--sparse-loss-weight", type=float, default=0.1)

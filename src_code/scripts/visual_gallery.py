@@ -28,7 +28,7 @@ def load_params(checkpoint, sample, device, latent_dim, num_gaussians):
             'opacities': checkpoint['opacities'].to(device),
         }
 
-    encoder = LatentEncoder(3, latent_dim).to(device)
+    encoder = LatentEncoder(sample['sparse_slices_ed'].shape[0], latent_dim).to(device)
     gaussian_model = GaussianModel(num_gaussians, latent_dim).to(device)
     encoder.load_state_dict(checkpoint['encoder_state_dict'])
     gaussian_model.load_state_dict(checkpoint['gaussian_model_state_dict'])
@@ -43,7 +43,13 @@ def generate_gallery(args):
     checkpoint = torch.load(args.checkpoint, map_location=device)
     num_gaussians = infer_num_gaussians(checkpoint, args.num_gaussians)
 
-    dataset = MITEADataset(args.data_dir, split=args.split)
+    config = checkpoint.get('config', {})
+    dataset = MITEADataset(
+        args.data_dir,
+        split=args.split,
+        num_sparse_slices=int(config.get('num_sparse_slices', 3)),
+        split_seed=int(config.get('split_seed', 17)),
+    )
     sample = dataset[args.sample_index]
     gt_vol = sample['occupancy_ed'].cpu().numpy()
     affine = sample['affine']

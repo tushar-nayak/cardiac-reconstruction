@@ -15,6 +15,8 @@ class MITEADataset(Dataset):
         self.data_dir = data_dir
         self.images_dir = os.path.join(data_dir, 'images')
         self.labels_dir = os.path.join(data_dir, 'labels')
+        if not 1 <= num_sparse_slices <= 3:
+            raise ValueError("num_sparse_slices must be between 1 and 3")
         self.num_sparse_slices = num_sparse_slices
         self.transform = transform
         
@@ -66,14 +68,19 @@ class MITEADataset(Dataset):
         # Pad with zeros
         return F.pad(tensor, (0, pad_w, 0, pad_h))
 
+    @staticmethod
+    def _to_canonical(data):
+        """Convert nibabel ``(x, y, z)`` arrays to tensor ``(z, y, x)``."""
+        return np.transpose(data, (2, 1, 0)).copy()
+
     def _get_slice_pose(self, affine, slice_idx, axis, shape):
         """
         Calculates the camera pose (R, T) for a given slice.
         axis: 0 (h), 1 (w), 2 (d)
         """
         # Centers of the volume in image coords
-        h, w, d = shape
-        center_img = torch.tensor([w/2, h/2, d/2, 1.0])
+        d, h, w = shape
+        center_img = torch.tensor([w / 2, h / 2, d / 2, 1.0])
         center_world = (torch.from_numpy(affine).float() @ center_img)[:3]
         
         # This is a simplification. For a real differentiable rasterizer,
@@ -102,50 +109,50 @@ class MITEADataset(Dataset):
         lbl_ed_nii = nib.load(lbl_ed_path)
         lbl_es_nii = nib.load(lbl_es_path)
         
-        img_ed = self._normalize(img_ed_nii.get_fdata())
-        img_es = self._normalize(img_es_nii.get_fdata())
+        img_ed = self._to_canonical(self._normalize(img_ed_nii.get_fdata()))
+        img_es = self._to_canonical(self._normalize(img_es_nii.get_fdata()))
         
         lbl_ed = lbl_ed_nii.get_fdata().astype(np.float32)
         lbl_ed = (lbl_ed > 0).astype(np.float32)
-        lbl_ed = np.transpose(lbl_ed, (2, 1, 0)) # (D, H, W)
+        lbl_ed = self._to_canonical(lbl_ed) # (D, H, W)
 
         lbl_es = lbl_es_nii.get_fdata().astype(np.float32)
         lbl_es = (lbl_es > 0).astype(np.float32)
-        lbl_es = np.transpose(lbl_es, (2, 1, 0)) # (D, H, W)
+        lbl_es = self._to_canonical(lbl_es) # (D, H, W)
         
         # Extract middle slices
-        h, w, d = img_ed.shape
+        d, h, w = img_ed.shape
         
         # Slices along different axes
         slices_ed = [
-            torch.from_numpy(img_ed[h//2, :, :]),
-            torch.from_numpy(img_ed[:, w//2, :]),
-            torch.from_numpy(img_ed[:, :, d//2])
+            torch.from_numpy(img_ed[d // 2, :, :]),
+            torch.from_numpy(img_ed[:, h // 2, :]),
+            torch.from_numpy(img_ed[:, :, w // 2]),
         ]
         
         # Metadata for each slice
         poses_ed = [
-            self._get_slice_pose(img_ed_nii.affine, h//2, 0, (h, w, d)),
-            self._get_slice_pose(img_ed_nii.affine, w//2, 1, (h, w, d)),
-            self._get_slice_pose(img_ed_nii.affine, d//2, 2, (h, w, d))
+            self._get_slice_pose(img_ed_nii.affine, d // 2, 2, (d, h, w)),
+            self._get_slice_pose(img_ed_nii.affine, h // 2, 1, (d, h, w)),
+            self._get_slice_pose(img_ed_nii.affine, w // 2, 0, (d, h, w)),
         ]
 
         slices_es = [
-            torch.from_numpy(img_es[h//2, :, :]),
-            torch.from_numpy(img_es[:, w//2, :]),
-            torch.from_numpy(img_es[:, :, d//2])
+            torch.from_numpy(img_es[d // 2, :, :]),
+            torch.from_numpy(img_es[:, h // 2, :]),
+            torch.from_numpy(img_es[:, :, w // 2]),
         ]
         
         # Pad slices
-        slices_ed = torch.stack([self._pad_to_size(s) for s in slices_ed])
-        slices_es = torch.stack([self._pad_to_size(s) for s in slices_es])
+        slices_ed = torch.stack([self._pad_to_size(s) for s in slices_ed[:self.num_sparse_slices]])
+        slices_es = torch.stack([self._pad_to_size(s) for s in slices_es[:self.num_sparse_slices]])
 
         return {
             'subject': subject,
             'index': idx,
             'sparse_slices_ed': slices_ed,
             'sparse_slices_es': slices_es,
-            'poses_ed': poses_ed,
+            'poses_ed': poses_ed[:self.num_sparse_slices],
             'occupancy_ed': torch.from_numpy(lbl_ed).float(),
             'occupancy_es': torch.from_numpy(lbl_es).float(),
             'affine': torch.from_numpy(img_ed_nii.affine).float()
