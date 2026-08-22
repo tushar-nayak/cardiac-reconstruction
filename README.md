@@ -53,7 +53,8 @@ python3 src_code/scripts/fit_subject_reconstruction.py \
 
 ```bash
 python3 src_code/scripts/evaluate_3d.py \
-  --checkpoint runs/subject_fit_v01/subject_fit.pth
+  --checkpoint runs/subject_fit_v01/subject_fit.pth \
+  --data-dir /path/to/mitea
 ```
 
 This writes a comparison figure and `metrics.json` beside the checkpoint output.
@@ -72,6 +73,7 @@ python3 src_code/scripts/evaluate_3d.py \
 ```bash
 python3 src_code/scripts/visual_gallery.py \
   --checkpoint runs/subject_fit_v01/subject_fit.pth \
+  --data-dir /path/to/mitea \
   --output-path runs/subject_fit_v01/visual_gallery.png
 ```
 
