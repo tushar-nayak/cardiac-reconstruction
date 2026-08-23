@@ -8,7 +8,7 @@ Sparse cardiac reconstruction with stabilized Gaussian occupancy fields, differe
 
 This repository explores a Gaussian occupancy formulation for reconstructing cardiac anatomy from sparse imaging. Instead of representing the volume with a pure implicit MLP, it uses explicit 3D Gaussian primitives, a non-saturating occupancy rule, sparse-slice supervision, and marching-cubes mesh extraction for direct visual comparison against ground truth.
 
-The current strongest result in this repo is a subject-specific reconstruction fit on the MITEA validation split. It is a working Gaussian-field reconstruction prototype with mesh-oriented diagnostics, not yet a mature multi-subject 4D Gaussian splatting system.
+The current strongest completed encoder result is a 40-epoch MITEA validation evaluation with 1,000 Gaussians. It is a working Gaussian-field reconstruction prototype with mesh-oriented diagnostics, not yet a mature multi-subject 4D Gaussian splatting system.
 
 ## What This Repo Does
 
@@ -20,12 +20,25 @@ The current strongest result in this repo is a subject-specific reconstruction f
 
 ## Current Results
 
-Current tracked subject-fit result from `runs/subject_fit_v01`:
+Current best completed encoder result from `runs/ablation_neg4`:
 
-- Sampled occupancy accuracy: `0.9655`
-- Sampled IoU: `0.9503`
-- Number of Gaussians: `1800`
-- Fit steps: `600`
+- Full-volume accuracy: `0.9510`
+- Full-volume IoU: `0.4519`
+- Full-volume Dice: `0.6225`
+- Number of Gaussians: `1000`
+- Training epochs: `40`
+- Evaluation split/sample: `val/0`
+
+Negative-loss ablation on the same validation sample:
+
+| Negative-loss weight | Full-volume IoU | Full-volume Dice |
+| ---: | ---: | ---: |
+| 4 | 0.4519 | 0.6225 |
+| 8 | 0.4458 | 0.6167 |
+| 16 | 0.3778 | 0.5484 |
+
+The weight-4 run is the current best completed ablation. The 2,000-Gaussian
+variant is still in progress and is not included in the reported results.
 
 Artifacts in this repository include:
 
@@ -53,7 +66,7 @@ python3 src_code/scripts/fit_subject_reconstruction.py \
 
 ```bash
 python3 src_code/scripts/evaluate_3d.py \
-  --checkpoint runs/subject_fit_v01/subject_fit.pth \
+  --checkpoint runs/ablation_neg4/checkpoint_epoch_40.pth \
   --data-dir /path/to/mitea
 ```
 
@@ -72,9 +85,9 @@ python3 src_code/scripts/evaluate_3d.py \
 
 ```bash
 python3 src_code/scripts/visual_gallery.py \
-  --checkpoint runs/subject_fit_v01/subject_fit.pth \
+  --checkpoint runs/ablation_neg4/checkpoint_epoch_40.pth \
   --data-dir /path/to/mitea \
-  --output-path runs/subject_fit_v01/visual_gallery.png
+  --output-path runs/ablation_neg4/visual_gallery.png
 ```
 
 ### 4. Encoder-Based Training Path
