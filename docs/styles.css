@@ -73,6 +73,16 @@ h2 {
   font-size: clamp(1.1rem, 2vw, 1.45rem);
 }
 
+.project-switch {
+  margin: 18px 0 0;
+  font-family: Verdana, Geneva, sans-serif;
+  font-size: 0.9rem;
+}
+
+.project-switch a {
+  color: var(--accent-2);
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
