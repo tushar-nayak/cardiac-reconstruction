@@ -19,15 +19,29 @@
 
       <section class="section method-picker" aria-label="Choose a reconstruction approach">
         <div class="method-tabs" role="tablist" aria-label="Reconstruction approaches">
-          <button class="method-tab" id="tab-gaussian" type="button" role="tab" aria-selected="true" aria-controls="panel-gaussian" tabindex="0">
-            Gaussian Occupancy
-          </button>
-          <button class="method-tab" id="tab-inr" type="button" role="tab" aria-selected="false" aria-controls="panel-inr" tabindex="-1">
+          <button class="method-tab" id="tab-inr" type="button" role="tab" aria-selected="true" aria-controls="panel-inr" tabindex="0">
             Implicit Neural Representation
+          </button>
+          <button class="method-tab" id="tab-gaussian" type="button" role="tab" aria-selected="false" aria-controls="panel-gaussian" tabindex="-1">
+            Gaussian Occupancy
           </button>
         </div>
 
-        <section class="method-panel" id="panel-gaussian" role="tabpanel" aria-labelledby="tab-gaussian" tabindex="0">
+        <section class="method-panel" id="panel-inr" role="tabpanel" aria-labelledby="tab-inr" tabindex="0">
+          <p class="eyebrow">Coordinate-based representation</p>
+          <h2>Implicit neural representation</h2>
+          <p>
+            Reconstruct a continuous occupancy field from sparse echocardiographic views using a coordinate MLP, shared priors, and subject adaptation.
+          </p>
+          <div class="method-summary">
+            <span><strong>0.8643</strong> best reported Dice</span>
+            <span><strong>0.7658</strong> best reported IoU</span>
+            <span><strong>536</strong> scan pairs</span>
+          </div>
+          <a class="method-cta" href="inr.html">Explore INR results <span aria-hidden="true">→</span></a>
+        </section>
+
+        <section class="method-panel" id="panel-gaussian" role="tabpanel" aria-labelledby="tab-gaussian" tabindex="0" hidden>
           <p class="eyebrow">Explicit representation</p>
           <h2>Gaussian occupancy fields</h2>
           <p>
@@ -41,19 +55,6 @@
           <a class="method-cta" href="gaussian.html">Explore Gaussian results <span aria-hidden="true">→</span></a>
         </section>
 
-        <section class="method-panel" id="panel-inr" role="tabpanel" aria-labelledby="tab-inr" tabindex="0" hidden>
-          <p class="eyebrow">Coordinate-based representation</p>
-          <h2>Implicit neural representation</h2>
-          <p>
-            Reconstruct a continuous occupancy field from sparse echocardiographic views using a coordinate MLP, shared priors, and subject adaptation.
-          </p>
-          <div class="method-summary">
-            <span><strong>0.8643</strong> best reported Dice</span>
-            <span><strong>0.7658</strong> best reported IoU</span>
-            <span><strong>536</strong> scan pairs</span>
-          </div>
-          <a class="method-cta" href="inr.html">Explore INR results <span aria-hidden="true">→</span></a>
-        </section>
       </section>
 
       <footer class="splash-footer">
