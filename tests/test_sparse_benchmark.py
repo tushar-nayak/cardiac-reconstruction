@@ -84,6 +84,26 @@ class SparseBenchmarkTests(unittest.TestCase):
             self.assertIsNotNone(parameter.grad)
             self.assertTrue(torch.isfinite(parameter.grad).all())
 
+    def test_gaussian_observed_initialization_ignores_background_coordinates(self):
+        points = torch.tensor([[0.1, 0.2, 0.3], [-0.2, 0.1, 0.2], [0.9, 0.9, 0.9]])
+        labels = torch.tensor([1.0, 1.0, 0.0])
+        changed = points.clone()
+        changed[-1] = -0.9
+        states = []
+        for observed in (points, changed):
+            torch.manual_seed(17)
+            model = SparseGaussianField(16)
+            self.assertTrue(model.initialize_from_observations(observed, labels))
+            states.append(model.means.detach().clone())
+        torch.testing.assert_close(states[0], states[1])
+        self.assertTrue((states[0].abs() <= 1).all())
+
+    def test_gaussian_initialization_without_foreground_preserves_uniform_centers(self):
+        model = SparseGaussianField(16)
+        original = model.means.detach().clone()
+        self.assertFalse(model.initialize_from_observations(torch.zeros(3, 3), torch.zeros(3)))
+        torch.testing.assert_close(model.means, original)
+
 
 if __name__ == "__main__":
     unittest.main()

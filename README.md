@@ -67,7 +67,7 @@ loss, and number of optimizer steps:
 
 By default this fits the first validation subject with both methods. The three
 central orthogonal planes are selected from volume dimensions alone. Training
-reads labels on those planes; Gaussian initialization uses uniformly sampled
+reads labels on those planes; default Gaussian initialization uses uniformly sampled
 positions without consulting the 3D target. Both fields query normalized XYZ
 coordinates. This is reconstruction from sparse binary annotations; an
 echo-image encoder is a separate next step. Matching update counts does not
@@ -121,6 +121,16 @@ and broader scan/phase coverage are still future work.
 
 The first single-subject run and its exact settings are recorded in
 [the initial benchmark notes](benchmarks/sparse_planes_v01.md).
+
+Gaussian optimization experiments can use `--methods gaussian`,
+`--gaussian-init observed`, and `--lr 0.003`. The optional initialization seeds centers from foreground
+coordinates on the selected observation planes, with small spatial jitter. It
+does not inspect labels elsewhere in the volume. If the observed masks contain
+no foreground, it retains uniform initialization. The chosen initialization,
+learning rate, and step count are recorded in each result. Uniform initialization
+and the original learning rate remain the defaults for reproducing the baseline.
+The [Gaussian optimization pilot](benchmarks/gaussian_optimization_v01.md)
+records the ablations, matched three-subject/three-seed results, and commands.
 
 ### 1. Subject-Specific Reconstruction
 

@@ -114,8 +114,16 @@ def run(args):
         for seed in args.seeds:
             for method in args.methods:
                 torch.manual_seed(seed)
-                model = (ImplicitOccupancyNetwork(args.hidden_dim, args.layers, args.frequencies)
-                         if method == "inr" else SparseGaussianField(args.num_gaussians)).to(device)
+                if method == "inr":
+                    model = ImplicitOccupancyNetwork(args.hidden_dim, args.layers, args.frequencies)
+                    initialization = "network_default"
+                else:
+                    model = SparseGaussianField(args.num_gaussians)
+                    initialization = "uniform"
+                    if args.gaussian_init == "observed":
+                        has_foreground = model.initialize_from_observations(points, labels)
+                        initialization = "observed_foreground" if has_foreground else "uniform_no_observed_foreground"
+                model = model.to(device)
                 if device.type == "cuda":
                     torch.cuda.reset_peak_memory_stats(device)
                 print(f"{sample['subject']} {method} seed={seed} planes={planes}", flush=True)
@@ -136,6 +144,8 @@ def run(args):
                     "protocol": "fixed_sparse_binary_label_planes_v1", "method": method,
                     "subject": sample["subject"], "scan": 1, "phase": "ED",
                     "split": args.split, "sample_index": index, "seed": seed,
+                    "initialization": initialization, "learning_rate": args.lr,
+                    "optimizer_steps": args.steps,
                     "volume_shape_zyx": shape, "planes_zyx_axis_index": planes,
                     "observed_voxels": int(observed.sum()), "supervision_sha256": digest,
                     "threshold": args.threshold, "eval_stride": stride,
@@ -184,6 +194,8 @@ def main():
     parser.add_argument("--layers", type=int, default=4)
     parser.add_argument("--frequencies", type=int, default=4)
     parser.add_argument("--num-gaussians", type=int, default=256)
+    parser.add_argument("--gaussian-init", choices=("uniform", "observed"), default="uniform",
+                        help="Optionally seed Gaussian centers using observed foreground coordinates only")
     parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument("--eval-chunk-size", type=int, default=4096)
     parser.add_argument("--eval-stride", type=int, default=1, help="Use >1 only for coarse smoke checks")
