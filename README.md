@@ -50,6 +50,47 @@ Artifacts in this repository include:
 
 ## Main Workflows
 
+### Shared sparse-plane benchmark
+
+Run both methods with the same annotated mask planes, minibatch sequence, BCE
+loss, and number of optimizer steps:
+
+```bash
+.venv/bin/python scripts/benchmark_sparse.py \
+  --data-dir dataset/mitea \
+  --run-dir runs/shared_sparse_baseline_v01 \
+  --plane-layout orthogonal \
+  --steps 1000 \
+  --save-occupancy \
+  --device cuda
+```
+
+By default this fits the first validation subject with both methods. The three
+central orthogonal planes are selected from volume dimensions alone. Training
+reads labels on those planes; Gaussian initialization uses uniformly sampled
+positions without consulting the 3D target. Both fields query normalized XYZ
+coordinates. This is reconstruction from sparse binary annotations; an
+echo-image encoder is a separate next step. Matching update counts does not
+match model size or runtime.
+
+Each new run directory contains the subject split manifest, configuration,
+per-method checkpoints, and `results.json`. Scores include whole-volume Dice
+and IoU, overlap on unobserved voxels, physical volume error, fitting/evaluation
+time, parameter count, and peak allocated CUDA memory. A supervision fingerprint
+records that the methods received the same observed labels. Existing run
+directories are rejected to prevent accidental overwrites.
+
+Use `--sample-indices 0 1 2 --seeds 17 23 42` for multiple subjects and seeds,
+or `--all-subjects` for the selected split. The current loader covers scan 1 ED
+subjects. `--plane-layout axial --num-planes 3` selects evenly spaced axial
+planes without inspecting foreground. `--eval-stride 8 --steps 5` provides a
+quick smoke check; coarse-grid overlap and volume estimates from that mode
+must not be reported as native-resolution results. Surface-distance metrics
+and broader scan/phase coverage are still future work.
+
+The first single-subject run and its exact settings are recorded in
+[the initial benchmark notes](benchmarks/sparse_planes_v01.md).
+
 ### 1. Subject-Specific Reconstruction
 
 This is the main working path in the repository right now.
