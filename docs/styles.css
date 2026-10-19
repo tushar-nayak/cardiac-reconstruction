@@ -295,6 +295,19 @@ figure,
   padding: 10px;
 }
 
+.inr-gallery {
+  padding: 0;
+  overflow: hidden;
+}
+
+.inr-gallery iframe {
+  display: block;
+  width: 100%;
+  height: 1800px;
+  border: 0;
+  background: #fff;
+}
+
 .viewer-panel h3 {
   margin: 4px 6px 10px;
   color: var(--accent);
@@ -379,5 +392,9 @@ pre {
   .viewer {
     min-height: 360px;
     height: 58vh;
+  }
+
+  .inr-gallery iframe {
+    height: 2100px;
   }
 }
