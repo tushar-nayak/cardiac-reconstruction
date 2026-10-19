@@ -6,7 +6,7 @@
 
 HeartMaker is the central project for exploring two cardiac reconstruction approaches: explicit Gaussian occupancy fields and coordinate-based implicit neural representations (INRs).
 
-The methods live side by side in `code_gaussian/` and `code_inr/`, with shared MITEA data loading and comparable reconstruction metrics. The website starts with a method selector and keeps the result pages separate.
+The methods live side by side in `code_gaussian/` and `code_inr/`, with shared MITEA data loading and comparable reconstruction metrics. The website starts with INR selected and keeps the two results pages separate.
 
 The Gaussian method uses explicit 3D primitives and a non-saturating occupancy rule. The INR method represents occupancy as a coordinate MLP and fits it from sparse annotated planes. Their existing results use different supervision protocols, so the reported scores should be read in their own experiment context.
 
@@ -18,6 +18,7 @@ The Gaussian method uses explicit 3D primitives and a non-saturating occupancy r
 - Supports differentiable sparse-slice supervision and pose refinement in the encoder-based path.
 - Includes a direct subject-fit pipeline that produces a usable mesh reconstruction.
 - Publishes separate results pages for each approach through the [HeartMaker project site](https://tushar-nayak.github.io/heart-maker/).
+- Includes a local copy of the INR project's interactive results site, reports, and viewer exports, so those visuals do not depend on the original repository being online.
 
 ## Current Results
 
@@ -186,7 +187,12 @@ Some older or optional paths may still assume additional packages such as `pytor
 
 ## INR Results Archive
 
-The earlier [`cardiac-volume-reconstruction`](https://github.com/tushar-nayak/cardiac-volume-reconstruction) project provides the published multi-subject INR results and viewers. Those results remain available on their original site and are linked from HeartMaker’s separate [INR results page](https://tushar-nayak.github.io/heart-maker/inr.html).
+The published INR results and interactive viewers are preserved locally under [`docs/inr-archive/`](docs/inr-archive/). The six-scan gallery includes selectable 2D slice and 3D mesh viewers; ten additional comparison/overlay viewers and the original result pages are included as well. HeartMaker’s [INR results page](https://tushar-nayak.github.io/heart-maker/inr.html) embeds the local gallery.
+
+- [Standalone local results site](docs/inr-archive/index.html)
+- [Interactive six-scan gallery](docs/inr-archive/gallery.html)
+- [Results index](docs/inr-archive/results_index.html) · [Report](docs/inr-archive/report.html)
+- [Original project site](https://tushar-nayak.github.io/cardiac-volume-reconstruction/) · [Source repository](https://github.com/tushar-nayak/cardiac-volume-reconstruction)
 
 The local INR baseline currently ports the coordinate MLP with positional encoding and sparse-plane occupancy supervision. The upstream shared-prior, pose-learning, and Reptile meta-learning workflows have not yet been migrated into `code_inr/`.
 
