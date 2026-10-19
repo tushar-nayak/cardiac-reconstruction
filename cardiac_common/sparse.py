@@ -4,6 +4,7 @@ import numpy as np
 import torch
 
 from code_gaussian.src.metrics import binary_metrics
+from cardiac_common.geometry import geometry_comparison
 
 
 def select_planes(shape, count=3, layout="axial"):
@@ -82,4 +83,5 @@ def reconstruction_metrics(probability, target, observed, affine, threshold=0.5)
     target_ml = float(truth.sum() * voxel_mm3 / 1000)
     return {"whole_grid": full, "unobserved_voxels": unseen,
             "predicted_volume_ml": predicted_ml, "target_volume_ml": target_ml,
-            "absolute_volume_error_ml": abs(predicted_ml - target_ml)}
+            "absolute_volume_error_ml": abs(predicted_ml - target_ml),
+            "geometry": geometry_comparison(pred, truth, affine)}

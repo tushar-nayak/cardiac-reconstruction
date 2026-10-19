@@ -80,6 +80,37 @@ time, parameter count, and peak allocated CUDA memory. A supervision fingerprint
 records that the methods received the same observed labels. Existing run
 directories are rejected to prevent accidental overwrites.
 
+Evaluation also reports **ΔK**, the signed difference between predicted and
+target integrated Gaussian curvature, and its absolute value. Both masks are
+meshed at 0.5 after thresholding the prediction at the configured probability
+threshold. Triangle angle defects are measured on meshes transformed by the
+NIfTI affine. Reports include surface area, connected components, Euler
+characteristic, boundary edges, nonmanifold edges/vertices, and a numerical
+Gauss–Bonnet residual. On closed manifold surfaces, the integral equals
+`2π × Euler characteristic`; zero ΔK does not establish anatomical accuracy.
+The integral is dimensionless; area assumes the affine uses millimeters.
+
+For open, missing, degenerate, or nonmanifold surfaces, ΔK is `null` with a
+status explaining why the closed-surface comparison is unavailable. Open
+manifolds report interior angle defects and boundary turning separately. Meshes
+are not padded or capped at the grid boundary. The checks concern mesh
+connectivity and face degeneracy; they do not detect geometric self-intersections.
+Summary statistics count valid and unavailable ΔK runs separately. These
+diagnostics are evaluation outputs and do not change either training loss.
+
+To evaluate an existing saved occupancy without retraining:
+
+```bash
+.venv/bin/python scripts/evaluate_geometry.py \
+  --prediction runs/shared_sparse_baseline_v01/inr/MITEA_071/seed_17/predicted_occupancy.pt \
+  --target dataset/mitea/labels/MITEA_071_scan1_ED.nii.gz \
+  --output runs/shared_sparse_baseline_v01/inr/MITEA_071/seed_17/geometry.json
+```
+
+Use the Gaussian run's occupancy path to evaluate that method. Match
+`--eval-stride` to the saved run when evaluating subsampled outputs. Each output
+file must be new; existing files are rejected.
+
 Use `--sample-indices 0 1 2 --seeds 17 23 42` for multiple subjects and seeds,
 or `--all-subjects` for the selected split. The current loader covers scan 1 ED
 subjects. `--plane-layout axial --num-planes 3` selects evenly spaced axial

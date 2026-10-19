@@ -68,9 +68,16 @@ def summarize(results):
         unseen = [row["metrics"]["unobserved_voxels"] for row in rows]
         if all(value is not None for value in unseen):
             scores["unobserved_dice"] = [value["dice"] for value in unseen]
+        delta_k = [row["metrics"].get("geometry", {}).get("absolute_delta_integrated_gaussian_curvature")
+                   for row in rows]
+        valid_delta_k = [value for value in delta_k if value is not None]
+        if valid_delta_k:
+            scores["absolute_delta_integrated_gaussian_curvature"] = valid_delta_k
         summary[method] = {
             "runs": len(rows),
             "subjects": len({row["subject"] for row in rows}),
+            "delta_k_valid_runs": len(valid_delta_k),
+            "delta_k_unavailable_runs": len(rows) - len(valid_delta_k),
             "statistics_over_subject_seed_runs": {
                 name: {"mean": float(np.mean(values)), "std": float(np.std(values))}
                 for name, values in scores.items()
@@ -120,6 +127,7 @@ def run(args):
                 eval_seconds = time.perf_counter() - started
                 stride = args.eval_stride
                 affine = np.asarray(sample["affine"]) @ np.diag([stride, stride, stride, 1])
+                metric_started = time.perf_counter()
                 metrics = reconstruction_metrics(
                     probability, target[::stride, ::stride, ::stride],
                     observed[::stride, ::stride, ::stride], affine, args.threshold,
@@ -134,6 +142,7 @@ def run(args):
                     "device": str(device), "torch_version": str(torch.__version__),
                     "parameter_count": sum(p.numel() for p in model.parameters()),
                     "fit_seconds": seconds, "evaluation_seconds": eval_seconds,
+                    "metric_evaluation_seconds": time.perf_counter() - metric_started,
                     "final_training_bce": final_loss,
                     "peak_cuda_allocated_mb": (torch.cuda.max_memory_allocated(device) / 1024**2
                                                if device.type == "cuda" else None),

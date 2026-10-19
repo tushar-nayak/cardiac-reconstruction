@@ -7,9 +7,23 @@ from cardiac_common.sparse import (
     coordinates, evaluate_grid, plane_samples, reconstruction_metrics, select_planes,
 )
 from code_gaussian.sparse_model import SparseGaussianField
+from scripts.benchmark_sparse import summarize
 
 
 class SparseBenchmarkTests(unittest.TestCase):
+    def test_unavailable_delta_k_is_not_averaged_as_zero(self):
+        rows = []
+        for delta in (None, 4 * np.pi):
+            rows.append({"method": "inr", "subject": "example", "fit_seconds": 1,
+                         "metrics": {"whole_grid": {"dice": 0.5, "iou": 1 / 3},
+                                     "unobserved_voxels": None,
+                                     "geometry": {"absolute_delta_integrated_gaussian_curvature": delta}}})
+        report = summarize(rows)["inr"]
+        self.assertEqual(report["delta_k_valid_runs"], 1)
+        self.assertEqual(report["delta_k_unavailable_runs"], 1)
+        self.assertAlmostEqual(report["statistics_over_subject_seed_runs"]
+                               ["absolute_delta_integrated_gaussian_curvature"]["mean"], 4 * np.pi)
+
     def test_unobserved_labels_cannot_change_training_samples(self):
         target = torch.zeros(9, 8, 7)
         planes = select_planes(target.shape, 3, "orthogonal")

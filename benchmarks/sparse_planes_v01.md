@@ -45,6 +45,27 @@ hardware, warm-up, and other GPU workloads; it is not a speed benchmark.
 Detailed metrics, checkpoints, occupancy grids, and the split manifest remain
 in the ignored run directory.
 
+## Geometry evaluation of saved predictions
+
+The saved native-resolution occupancies were subsequently evaluated with
+`scripts/evaluate_geometry.py`, using the original target label and threshold
+0.5. No component filtering or boundary capping was applied.
+
+| Surface | Mesh components | Euler characteristic | Boundary edges | Integrated Gaussian curvature |
+| --- | ---: | ---: | ---: | ---: |
+| Target | 2 | 2 | 0 | approximately 4π |
+| INR prediction | 15 | 18 | 144 | closed-surface diagnostic unavailable |
+| Gaussian prediction | 1 | 2 | 0 | approximately 4π |
+
+The INR surface touches the grid boundary, so its closed-surface ΔK is `null`.
+For the Gaussian prediction, signed ΔK is approximately zero (numerical value
+`-2.34e-13`). Its different component count demonstrates that equal integrated
+curvature does not establish matching topology or anatomy. Component counts
+include every extracted mesh fragment, regardless of size.
+
+Reports are saved as `geometry.json` next to each run's saved occupancy tensor.
+Future benchmark runs include these diagnostics in their main metrics JSON.
+
 ## Next experiments
 
 Evaluate multiple validation subjects and seeds before comparing methods.
