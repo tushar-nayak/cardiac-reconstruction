@@ -8,7 +8,8 @@ import numpy as np
 from torch.utils.data import Dataset
 
 class MITEADataset(Dataset):
-    def __init__(self, data_dir, split='train', num_sparse_slices=3, transform=None, split_seed=17):
+    def __init__(self, data_dir, split='train', num_sparse_slices=3, transform=None, split_seed=17,
+                 split_policy='shuffled'):
         """
         Dataset for MITEA data, simulating sparse 2D slice inputs for 4D reconstruction.
         """
@@ -28,6 +29,17 @@ class MITEADataset(Dataset):
             raise ValueError("split must be one of: train, val, test")
         if not subject_ids:
             raise FileNotFoundError(f"No MITEA ED scans found under {self.images_dir}")
+
+        if split_policy not in {'shuffled', 'may2026'}:
+            raise ValueError("split_policy must be shuffled or may2026")
+        self.split_policy = split_policy
+        if split_policy == 'may2026':
+            # Exact subject ordering and boundaries used by the May reference.
+            self.subject_ids = {
+                'train': subject_ids[:110], 'val': subject_ids[110:125],
+                'test': subject_ids[125:],
+            }[split]
+            return
 
         # Shuffle once with a recorded seed so the split is reproducible and
         # does not depend on filesystem enumeration order.

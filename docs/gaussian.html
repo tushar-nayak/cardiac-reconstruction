@@ -3,95 +3,61 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>HeartMaker | Gaussian Occupancy</title>
+    <title>HeartMaker | Gaussian Reconstruction</title>
     <link rel="stylesheet" href="styles.css?v=5">
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <link rel="stylesheet" href="gaussian-results.css?v=1">
+    <script defer src="assets/plotly-2.35.2.min.js"></script>
+    <script defer src="gaussian-results.js?v=1"></script>
   </head>
-  <body>
+  <body class="reference-preview" data-assets="assets/gaussian-reference/">
     <main>
       <header class="hero">
-        <p class="eyebrow">Sparse cardiac imaging to 3D occupancy</p>
-        <h1>Gaussian Occupancy Reconstruction</h1>
-        <p class="lead">
-          Stabilized Gaussian occupancy fields reconstruct a 3D cardiac label volume, with full-volume metrics, fitted mesh surfaces, and direct visual diagnostics.
-        </p>
-        <p class="project-switch"><a href="index.html">← Choose an approach</a><span aria-hidden="true"> · </span><a href="inr.html">View implicit neural representation results</a></p>
+        <p class="eyebrow">Gaussian occupancy · Previous Stable Recipe</p>
+        <h1>Gaussian reconstruction</h1>
+        <p class="lead">1,800 localized Gaussians in physical space, initialized and fitted from the full 3D label. Compare the Previous Stable Recipe at 600 steps with its 1,800-step refinement.</p>
+        <p class="project-switch"><a href="index.html">← Choose an approach</a> · <a href="inr.html">INR results</a></p>
       </header>
-
-      <section class="metrics" aria-label="Reconstruction metrics">
-        <article>
-          <span class="value">0.951</span>
-          <span class="label">full-volume accuracy</span>
-        </article>
-        <article>
-          <span class="value">0.452</span>
-          <span class="label">full-volume IoU</span>
-        </article>
-        <article>
-          <span class="value">0.623</span>
-          <span class="label">full-volume Dice</span>
-        </article>
-        <article>
-          <span class="value">1000</span>
-          <span class="label">Gaussians</span>
-        </article>
+      <section class="metrics" aria-label="Mean full-label fitting results across two subjects">
+        <article><span id="mean-dice" class="value">—</span><span class="label">mean native-grid Dice · <span id="old-dice">—</span> at 600 steps</span></article>
+        <article><span id="mean-iou" class="value">—</span><span class="label">mean native-grid IoU</span></article>
+        <article><span id="mean-volume" class="value">—</span><span class="label">mean volume error · mL</span></article>
+        <article><span id="pair-count" class="value">—</span><span class="label">subjects reconstructed · seed 17</span></article>
       </section>
-
-      <section class="section">
-        <div class="section-heading">
-          <h2>Interactive Reconstruction</h2>
-          <p>Predicted and ground-truth marching-cubes surfaces from the best completed negative-loss ablation.</p>
+      <p class="preview-note">Full-label representation fits on two subjects, using seed 17. These scores measure recovery of known 3D anatomy. The INR results use a different protocol. MITEA 111 reproduces the historical validation example; MITEA 071 provides a second reconstruction.</p>
+      <p id="status" role="status" aria-live="polite">Loading Previous Stable Recipe results…</p>
+      <section class="section" aria-labelledby="surfaces-title">
+        <div class="section-heading"><div><h2 id="surfaces-title">Recovered geometry</h2><p>Rotate any surface to move all cameras. The reference overlay highlights the remaining differences.</p></div></div>
+        <div class="preview-controls">
+          <label>Subject <select id="subject" disabled></select></label>
+          <label>Seed <select id="seed" disabled></select></label>
+          <label class="overlay-control"><input type="checkbox" id="overlay"> Overlay reference on predictions</label>
         </div>
-        <div class="viewer-grid">
-          <div class="viewer-panel">
-            <h3>Prediction</h3>
-            <div id="viewer-pred" class="viewer" role="img" aria-label="Interactive 3D mesh of the predicted cardiac occupancy field"></div>
-          </div>
-          <div class="viewer-panel">
-            <h3>Ground Truth</h3>
-            <div id="viewer-gt" class="viewer" role="img" aria-label="Interactive 3D mesh of the ground-truth cardiac label"></div>
-          </div>
+        <div class="preview-viewers">
+          <div class="viewer-panel"><h3>Ground truth</h3><div id="mesh-target" class="viewer" aria-label="Interactive target surface"></div></div>
+          <div class="viewer-panel"><h3>Previous Stable Recipe · 600 steps</h3><div id="mesh-control" class="viewer" aria-label="Interactive Previous Stable Recipe Gaussian surface"></div></div>
+          <div class="viewer-panel"><h3>Refined fit · 1,800 steps</h3><div id="mesh-candidate" class="viewer" aria-label="Interactive refined Gaussian surface"></div></div>
         </div>
+        <div class="table-wrap"><table><caption>Selected subject · full native grid; sampled metrics labeled separately</caption><thead><tr><th>Metric</th><th>600 steps</th><th>1,800 steps</th></tr></thead><tbody id="selected-metrics"></tbody></table></div>
       </section>
-
-      <section class="section">
-        <div class="section-heading">
-          <h2>Results</h2>
-          <p>Ground truth and predicted orthogonal slices from the best completed encoder run.</p>
+      <section class="section" aria-labelledby="slices-title">
+        <div class="section-heading"><div><h2 id="slices-title">Inspect the anatomy in slices</h2><p>Scroll through the native voxel grid to compare foreground coverage and boundary errors.</p></div></div>
+        <div class="preview-controls">
+          <label>View <select id="axis"><option value="0">Axial · z</option><option value="1">Coronal · y</option><option value="2">Sagittal · x</option></select></label>
+          <label class="slice-slider">Slice <input id="slice" type="range" min="0" max="1" value="0"><output id="slice-label" for="slice"></output></label>
         </div>
-        <div class="image-grid">
-          <figure>
-            <img src="assets/comparison_v01.png" alt="Ground truth and predicted axial and coronal reconstruction comparison">
-            <figcaption>Direct 3D evaluation slices</figcaption>
-          </figure>
-          <figure>
-            <img src="assets/visual_gallery.png" alt="Gallery of ground truth and predicted axial, coronal, and sagittal slices">
-            <figcaption>Orthogonal slice gallery</figcaption>
-          </figure>
+        <p class="slice-legend"><span class="correct">Correct foreground</span><span class="missed">Missed foreground</span><span class="extra">Extra foreground</span></p>
+        <div class="preview-viewers">
+          <figure class="slice-panel"><canvas id="slice-target" role="img" aria-label="Target binary label slice"></canvas><figcaption>Ground truth</figcaption></figure>
+          <figure class="slice-panel"><canvas id="slice-control" role="img" aria-label="Previous Stable Recipe slice errors"></canvas><figcaption>Previous Stable Recipe · 600 steps</figcaption></figure>
+          <figure class="slice-panel"><canvas id="slice-candidate" role="img" aria-label="Refined fit slice errors"></canvas><figcaption>Refined fit · 1,800 steps</figcaption></figure>
         </div>
       </section>
-
       <section class="section compact">
-        <h2>Method</h2>
-        <p>
-          The reconstruction represents cardiac anatomy as a set of 3D Gaussian occupancy kernels rather than a dense voxel grid.
-          Gaussian centers are initialized from labeled occupied voxels, then their positions, scales, and opacities are optimized
-          against affine-correct sampled volumetric occupancy targets. The current reported run uses a negative-loss weight of 4.
-        </p>
-        <p>
-          The occupancy value at any query point is computed with a non-saturating density rule, which accumulates nearby Gaussian
-          contributions as a soft volumetric field. After fitting, the field is sampled on a regular grid and converted into a
-          triangular surface using marching cubes at the 0.5 isosurface. The interactive viewer compares that predicted mesh
-          against a marching-cubes mesh extracted from the ground-truth label volume for the same sample.
-        </p>
-        <p>
-          This page shows the best completed encoder ablation used for visual inspection. It is not claiming population-level
-          generalization; the purpose is to make the Gaussian reconstruction path inspectable and to compare its recovered surface
-          against the available label geometry. A 2,000-Gaussian ablation remains in progress.
-        </p>
+        <h2>About the Previous Stable Recipe</h2>
+        <p>The recipe from May 15 uses 1,800 axis-aligned Gaussians, occupied-voxel initialization, initial scales of about 1.59 mm, and weighted full-volume fitting with foreground and uniform samples. This reproduction uses the historical subject ordering and records patient identity in its checkpoints.</p>
+        <p>The original 0.9503 IoU was a sampled-point diagnostic. The reproduced sample score and native-grid scores are reported separately. The refined model receives three times as many optimizer steps; both versions use the same model size, full-label supervision, and seed.</p>
+        <p>ΔK and mesh component counts remain visible because a high overlap score can coexist with holes or fragments. Matching integrated curvature is not evidence of matching anatomy. These are two reference examples, not population-level validation results.</p>
       </section>
     </main>
-
-    <script src="viewer.js?v=5"></script>
   </body>
 </html>

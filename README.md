@@ -22,6 +22,30 @@ The Gaussian method uses explicit 3D primitives and a non-saturating occupancy r
 
 ## Current Results
 
+### Previous Stable Recipe
+
+The main subject-fitting path now defaults to the May 15 recipe: 1,800
+localized, physical-space Gaussians initialized and optimized using the full
+3D label. The historical split selects `MITEA_111` at validation index 0.
+These are full-label representation fits, distinct from the sparse-plane pilot
+and the older encoder experiment.
+
+| Subject | Steps | Native-grid Dice | Native-grid IoU |
+| --- | ---: | ---: | ---: |
+| MITEA_111 | 600 | 0.9449 | 0.8956 |
+| MITEA_111 | 1800 | 0.9776 | 0.9562 |
+| MITEA_071 | 600 | 0.9678 | 0.9377 |
+| MITEA_071 | 1800 | 0.9812 | 0.9632 |
+
+The 600-step reproduction's historical sampled-point IoU is 0.9487 on
+`MITEA_111`, close to the archived 0.9503. Sampled and whole-grid metrics are
+reported separately. These two subjects use seed 17; they do not establish
+sparse-view performance or population-level generalization.
+See [the restoration notes](benchmarks/may2026_gaussian_reference.md) for
+commands, geometry diagnostics, and the remaining limitations.
+
+### Earlier encoder experiment
+
 Current best completed encoder result from `runs/ablation_neg4`:
 
 - Full-volume accuracy: `0.9510`
@@ -39,14 +63,13 @@ Negative-loss ablation on the same validation sample:
 | 8 | 0.4458 | 0.6167 |
 | 16 | 0.3778 | 0.5484 |
 
-The weight-4 run is the current best completed ablation. The 2,000-Gaussian
-variant is still in progress and is not included in the reported results.
+The weight-4 run is the best completed ablation recorded here. No completed
+2,000-Gaussian result is included in these reported results.
 
-Artifacts in this repository include:
-
-- Orthogonal slice comparison: [docs/assets/comparison_v01.png](docs/assets/comparison_v01.png)
-- Reconstruction gallery: [docs/assets/visual_gallery.png](docs/assets/visual_gallery.png)
-- Interactive mesh assets for the GitHub Pages site under [docs/assets](docs/assets)
+Historical encoder assets are retained in
+[the research archive](benchmarks/legacy_encoder_assets/) outside the published
+website. Current interactive Gaussian meshes and slice data live under
+[docs/assets/gaussian-reference](docs/assets/gaussian-reference).
 
 ## Main Workflows
 
@@ -139,12 +162,23 @@ This is the main working path in the repository right now.
 ```bash
 python3 code_gaussian/scripts/fit_subject_reconstruction.py \
   --data-dir /path/to/mitea \
-  --run-dir runs/subject_fit_v01 \
+  --run-dir runs/gaussian_may2026_reference_v01 \
+  --recipe may2026 \
   --split val \
   --sample-index 0 \
   --num-gaussians 1800 \
-  --steps 600
+  --steps 600 \
+  --evaluate
 ```
+
+Use a new run directory each time. `--evaluate` saves the native-resolution
+occupancy tensor, whole-grid metrics, ΔK geometry checks, and the separately
+labeled historical sampled-point diagnostic. Use `--steps 1800` to reproduce the
+refined fit. The May recipe uses the historical sorted split by default;
+`--split-policy shuffled` selects the current subject split instead. Checkpoints
+record subject identity and split policy so evaluation cannot silently select a
+different patient. `--recipe stabilized` retains the later centroid-weighted
+sampling path and defaults to the shuffled split.
 
 ### 2. 3D Evaluation
 
@@ -242,6 +276,7 @@ The MITEA setup currently used here is best suited for static 3D reconstruction 
 - Technical report: [report.md](report.md)
 - GitHub Pages site: [docs/index.html](docs/index.html)
 - Gaussian results page: [docs/gaussian.html](docs/gaussian.html)
+- Previous Stable Recipe and refined fits: [docs/gaussian.html](docs/gaussian.html)
 - INR results page: [docs/inr.html](docs/inr.html)
 
 ## Installation & Dependencies

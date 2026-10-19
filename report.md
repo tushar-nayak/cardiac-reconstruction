@@ -49,11 +49,11 @@ These metrics indicate that the Gaussian field is no longer collapsing to a triv
 ### 2. Spatial Fidelity
 The strongest current reconstruction yields a coherent ventricular-like envelope and substantially cleaner orthogonal slice comparisons than the earlier stabilization checkpoints. The predicted volume is still smoother than the label-derived surface, but it now tracks the global shape well enough to support direct mesh extraction and visual comparison.
 
-![Orthogonal slice comparison](docs/assets/comparison_v01.png)
+![Orthogonal slice comparison](benchmarks/legacy_encoder_assets/comparison_v01.png)
 
 *Figure 2. Ground-truth and predicted slice comparisons from the current subject-fit reconstruction.*
 
-![Orthogonal gallery](docs/assets/visual_gallery.png)
+![Orthogonal gallery](benchmarks/legacy_encoder_assets/visual_gallery.png)
 
 *Figure 3. Additional axial, coronal, and sagittal views of the reconstructed occupancy field.*
 

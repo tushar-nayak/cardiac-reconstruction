@@ -49,8 +49,11 @@ def generate_gallery(args):
         split=args.split,
         num_sparse_slices=int(config.get('num_sparse_slices', 3)),
         split_seed=int(config.get('split_seed', 17)),
+        split_policy=config.get('split_policy', 'shuffled'),
     )
     sample = dataset[args.sample_index]
+    if checkpoint.get('subject') and checkpoint['subject'] != sample['subject']:
+        raise ValueError(f"Checkpoint belongs to {checkpoint['subject']}, selected sample is {sample['subject']}")
     gt_vol = sample['occupancy_ed'].cpu().numpy()
     affine = sample['affine']
     D, H, W = gt_vol.shape
