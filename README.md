@@ -1,10 +1,10 @@
-# HeartMaker: Cardiac Reconstruction with Gaussian Occupancy and Implicit Neural Representations
+# Cardiac Reconstruction: Neural Implicit Representations and Gaussian Occupancy
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C.svg)
 ![TorchDiffEq](https://img.shields.io/badge/TorchDiffEq-Latest-orange.svg)
 
-HeartMaker is the central project for exploring two cardiac reconstruction approaches: explicit Gaussian occupancy fields and coordinate-based implicit neural representations (INRs).
+This repository brings together two cardiac reconstruction approaches: explicit Gaussian occupancy fields and coordinate-based implicit neural representations (INRs).
 
 The methods live side by side in `code_gaussian/` and `code_inr/`, with shared MITEA data loading and comparable reconstruction metrics. The website starts with INR selected and keeps the two results pages separate.
 
@@ -17,7 +17,7 @@ The Gaussian method uses explicit 3D primitives and a non-saturating occupancy r
 - Uses stabilized density aggregation: `occupancy(x) = 1 - exp(-density(x))`.
 - Supports differentiable sparse-slice supervision and pose refinement in the encoder-based path.
 - Includes a direct subject-fit pipeline that produces a usable mesh reconstruction.
-- Publishes separate results pages for each approach through the [HeartMaker project site](https://tushar-nayak.github.io/heart-maker/).
+- Publishes separate results pages for each approach through the [Cardiac Reconstruction project site](https://tushar-nayak.github.io/cardiac-reconstruction/).
 - Includes a local copy of the INR project's interactive results site, reports, and viewer exports, so those visuals do not depend on the original repository being online.
 
 ## Current Results
@@ -304,7 +304,7 @@ Some older or optional paths may still assume additional packages such as `pytor
 
 ## INR Results Archive
 
-The published INR results and interactive viewers are preserved locally under [`docs/inr-archive/`](docs/inr-archive/). The six-scan gallery includes selectable 2D slice and 3D mesh viewers; ten additional comparison/overlay viewers and the original result pages are included as well. HeartMaker’s [INR results page](https://tushar-nayak.github.io/heart-maker/inr.html) embeds the local gallery.
+The published INR results and interactive viewers are preserved locally under [`docs/inr-archive/`](docs/inr-archive/). The six-scan gallery includes selectable 2D slice and 3D mesh viewers; ten additional comparison/overlay viewers and the original result pages are included as well. The [INR results page](https://tushar-nayak.github.io/cardiac-reconstruction/inr.html) embeds the local gallery.
 
 - [Standalone local results site](docs/inr-archive/index.html)
 - [Interactive six-scan gallery](docs/inr-archive/gallery.html)

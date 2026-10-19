@@ -1,4 +1,4 @@
-# Project Tracker: cardiac-reconstruction-evolved
+# Project Tracker: cardiac-reconstruction
 
 ## Timeline
 

@@ -46,6 +46,14 @@ class SparseBenchmarkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             select_planes((3, 5, 7), 4)
 
+    def test_axial_fractions_place_planes_from_shape_only(self):
+        self.assertEqual(select_planes((134, 9, 9), 3, "axial", [0.375, 0.5, 0.625]),
+                         [(0, 50), (0, 67), (0, 83)])
+        with self.assertRaises(ValueError):
+            select_planes((4, 5, 7), 3, "axial", [0.5, 0.55, 0.6])
+        with self.assertRaises(ValueError):
+            select_planes((40, 5, 7), 3, "axial", [0.5, 0.6])
+
     def test_grid_sampling_preserves_xyz_order_and_stride(self):
         class CoordinateField(torch.nn.Module):
             def forward(self, points):

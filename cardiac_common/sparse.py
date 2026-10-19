@@ -2,13 +2,22 @@
 
 import numpy as np
 import torch
+from scipy import ndimage
 
 from code_gaussian.src.metrics import binary_metrics
+from cardiac_common.clinical import surface_distances
 from cardiac_common.geometry import geometry_comparison
 
+# 26-connectivity: voxels touching at a corner belong to one component.
+_CONNECTIVITY = np.ones((3, 3, 3), dtype=bool)
 
-def select_planes(shape, count=3, layout="axial"):
-    """Return (zyx axis, voxel index) planes using volume dimensions only."""
+
+def select_planes(shape, count=3, layout="axial", fractions=None):
+    """Return (zyx axis, voxel index) planes using volume dimensions only.
+
+    Axial ``fractions`` place plane ``i`` at ``floor(fractions[i] * depth)``;
+    without them planes sit at bin centres ``(i + 0.5) / count``.
+    """
     if len(shape) != 3 or min(shape) < 1:
         raise ValueError("shape must contain three positive dimensions")
     if count < 1:
@@ -19,6 +28,13 @@ def select_planes(shape, count=3, layout="axial"):
         return [(axis, (shape[axis] - 1) // 2) for axis in range(count)]
     if layout != "axial" or count > shape[0]:
         raise ValueError("axial layout requires count <= volume depth")
+    if fractions is not None:
+        if len(fractions) != count or not all(0 <= f < 1 for f in fractions):
+            raise ValueError("need one fraction in [0, 1) per axial plane")
+        indices = [int(np.floor(f * shape[0])) for f in fractions]
+        if len(set(indices)) != len(indices):
+            raise ValueError("axial fractions map to duplicate slices")
+        return [(0, index) for index in indices]
     # Bin centers; no search for foreground or anatomy in held-out labels.
     indices = np.floor((np.arange(count) + 0.5) * shape[0] / count).astype(int)
     return [(0, int(index)) for index in indices]
@@ -64,11 +80,16 @@ def evaluate_grid(model, shape, device, chunk_size=4096, stride=1):
     return output.reshape(sampled_shape)
 
 
-def reconstruction_metrics(probability, target, observed, affine, threshold=0.5):
-    """Report whole-grid and unobserved-voxel overlap, plus physical volume error."""
-    pred = np.asarray(probability) >= threshold
-    truth = np.asarray(target) >= 0.5
-    seen = np.asarray(observed, dtype=bool)
+def largest_component(mask):
+    """Keep the largest 26-connected component; returns (mask, component count)."""
+    labels, count = ndimage.label(mask, structure=_CONNECTIVITY)
+    if count <= 1:
+        return np.asarray(mask, dtype=bool), int(count)
+    sizes = np.bincount(labels.ravel())[1:]
+    return labels == int(sizes.argmax()) + 1, int(count)
+
+
+def _overlap_metrics(pred, truth, seen, voxel_mm3):
     full = binary_metrics(pred, truth)
     # Two empty masks agree exactly; avoid labeling an empty background as Dice=0.
     if not pred.any() and not truth.any():
@@ -78,10 +99,32 @@ def reconstruction_metrics(probability, target, observed, affine, threshold=0.5)
         unseen = binary_metrics(pred[~seen], truth[~seen])
         if not pred[~seen].any() and not truth[~seen].any():
             unseen.update(dice=1.0, iou=1.0)
-    voxel_mm3 = float(abs(np.linalg.det(np.asarray(affine)[:3, :3])))
     predicted_ml = float(pred.sum() * voxel_mm3 / 1000)
     target_ml = float(truth.sum() * voxel_mm3 / 1000)
     return {"whole_grid": full, "unobserved_voxels": unseen,
             "predicted_volume_ml": predicted_ml, "target_volume_ml": target_ml,
-            "absolute_volume_error_ml": abs(predicted_ml - target_ml),
-            "geometry": geometry_comparison(pred, truth, affine)}
+            "absolute_volume_error_ml": abs(predicted_ml - target_ml)}
+
+
+def reconstruction_metrics(probability, target, observed, affine, threshold=0.5, secondary=True):
+    """Report whole-grid and unobserved-voxel overlap, physical volume error,
+    surface distances, and mesh geometry.
+
+    With ``secondary``, the same overlap/surface metrics are repeated after
+    keeping only the largest connected component, as a sensitivity analysis.
+    """
+    pred = np.asarray(probability) >= threshold
+    truth = np.asarray(target) >= 0.5
+    seen = np.asarray(observed, dtype=bool)
+    voxel_mm3 = float(abs(np.linalg.det(np.asarray(affine)[:3, :3])))
+    result = _overlap_metrics(pred, truth, seen, voxel_mm3)
+    result["surface"] = surface_distances(pred, truth, affine)
+    filtered, count = largest_component(pred)
+    result["voxel_components_26"] = count
+    result["target_voxel_components_26"] = largest_component(truth)[1]
+    if secondary:
+        sensitivity = _overlap_metrics(filtered, truth, seen, voxel_mm3)
+        sensitivity["surface"] = surface_distances(filtered, truth, affine)
+        result["largest_component_sensitivity"] = sensitivity
+    result["geometry"] = geometry_comparison(pred, truth, affine)
+    return result
