@@ -5,7 +5,7 @@ import unittest
 import nibabel as nib
 import numpy as np
 
-from src_code.src.data_loaders.mitea_loader import MITEADataset
+from code_gaussian.src.data_loaders.mitea_loader import MITEADataset
 
 
 class DatasetTests(unittest.TestCase):

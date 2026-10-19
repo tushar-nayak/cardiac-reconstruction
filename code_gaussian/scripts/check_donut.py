@@ -8,9 +8,9 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src_code.src.data_loaders.mitea_loader import MITEADataset
-from src_code.src.models.ode_model import LatentEncoder
-from src_code.src.models.gaussian_model import GaussianModel
+from code_gaussian.src.data_loaders.mitea_loader import MITEADataset
+from code_gaussian.src.models.ode_model import LatentEncoder
+from code_gaussian.src.models.gaussian_model import GaussianModel
 
 DEFAULT_DATA_DIR = "/home/sofa/host_dir/cardiac_reconstruction_project/cap-mitea/mitea"
 

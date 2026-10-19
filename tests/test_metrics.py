@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from src_code.src.metrics import binary_metrics, volume_to_mesh
+from code_gaussian.src.metrics import binary_metrics, volume_to_mesh
 
 
 class MetricsTests(unittest.TestCase):

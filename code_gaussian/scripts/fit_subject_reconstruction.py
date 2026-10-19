@@ -10,9 +10,9 @@ import torch
 import torch.nn.functional as F
 import tqdm
 
-from src_code.src.data_loaders.mitea_loader import MITEADataset
-from src_code.src.utils.coord_utils import sample_volume_at_points
-from src_code.src.occupancy import evaluate_gaussian_occupancy
+from code_gaussian.src.data_loaders.mitea_loader import MITEADataset
+from code_gaussian.src.utils.coord_utils import sample_volume_at_points
+from code_gaussian.src.occupancy import evaluate_gaussian_occupancy
 
 def image_to_world(points_img, affine, device):
     points_h = torch.cat([points_img, torch.ones(points_img.shape[0], 1, device=device)], dim=-1)

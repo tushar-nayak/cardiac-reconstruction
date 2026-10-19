@@ -9,7 +9,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src_code.src.data_loaders.mitea_loader import MITEADataset
+from code_gaussian.src.data_loaders.mitea_loader import MITEADataset
 
 def debug_coords():
     data_dir = "/home/sofa/host_dir/cardiac_reconstruction_project/cap-mitea/mitea"

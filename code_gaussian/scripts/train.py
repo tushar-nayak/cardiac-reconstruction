@@ -1,7 +1,7 @@
 import sys
 import os
 
-# Add the project root to sys.path to allow imports from src_code
+# Add the project root to sys.path to allow imports from code_gaussian
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.append(project_root)
@@ -9,13 +9,13 @@ if project_root not in sys.path:
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from src_code.src.data_loaders.mitea_loader import MITEADataset
-from src_code.src.models.ode_model import LatentEncoder
-from src_code.src.models.ode_model import CardiacODE
-from src_code.src.models.gaussian_model import GaussianModel
-from src_code.src.models.pose_model import PoseOptimizer
-from src_code.src.utils.coord_utils import sample_volume_at_points
-from src_code.src.rendering.rasterizer import RadiologicalRasterizer
+from code_gaussian.src.data_loaders.mitea_loader import MITEADataset
+from code_gaussian.src.models.ode_model import LatentEncoder
+from code_gaussian.src.models.ode_model import CardiacODE
+from code_gaussian.src.models.gaussian_model import GaussianModel
+from code_gaussian.src.models.pose_model import PoseOptimizer
+from code_gaussian.src.utils.coord_utils import sample_volume_at_points
+from code_gaussian.src.rendering.rasterizer import RadiologicalRasterizer
 import tqdm
 import argparse
 

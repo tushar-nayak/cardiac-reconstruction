@@ -53,7 +53,7 @@ Artifacts in this repository include:
 This is the main working path in the repository right now.
 
 ```bash
-python3 src_code/scripts/fit_subject_reconstruction.py \
+python3 code_gaussian/scripts/fit_subject_reconstruction.py \
   --data-dir /path/to/mitea \
   --run-dir runs/subject_fit_v01 \
   --split val \
@@ -65,7 +65,7 @@ python3 src_code/scripts/fit_subject_reconstruction.py \
 ### 2. 3D Evaluation
 
 ```bash
-python3 src_code/scripts/evaluate_3d.py \
+python3 code_gaussian/scripts/evaluate_3d.py \
   --checkpoint runs/ablation_neg4/checkpoint_epoch_40.pth \
   --data-dir /path/to/mitea
 ```
@@ -75,27 +75,54 @@ It also writes full-volume accuracy/IoU/Dice and affine-aware
 `predicted_mesh.npz` and `target_mesh.npz` files. For a fresh checkpoint:
 
 ```bash
-python3 src_code/scripts/evaluate_3d.py \
+python3 code_gaussian/scripts/evaluate_3d.py \
   --checkpoint runs/stabilization_v01/checkpoint_epoch_50.pth \
   --data-dir /path/to/mitea \
   --volume-resolution 64
 ```
 
-### 3. Visual Gallery
+### 3. Implicit neural representation baseline
+
+The repository also includes a coordinate based implicit neural representation
+(INR), adapted from the approach in
+[`cardiac-volume-reconstruction`](https://github.com/tushar-nayak/cardiac-volume-reconstruction).
+It learns a continuous occupancy field from a few annotated axial planes, then
+queries that field over the complete volume. This first local baseline uses
+fixed, stratified planes and per-subject fitting; the upstream shared-prior,
+pose-learning, and Reptile meta-learning experiments are not included yet.
+
+The supplied archive expands to `dataset/mitea/`:
 
 ```bash
-python3 src_code/scripts/visual_gallery.py \
+python3 -m zipfile -e dataset/cap-mitea.zip dataset
+python3 code_inr/fit_subject_inr.py \
+  --data-dir dataset/mitea \
+  --run-dir runs/inr_subject_v01 \
+  --split val \
+  --sample-index 0 \
+  --num-slices 3
+```
+
+The INR model and fitting code live in `code_inr/`. Its loader and common metric
+utilities are imported from `code_gaussian/`. The checkpoint, predicted
+occupancy, and full-volume metrics are saved under the run directory. Gaussian
+models and workflows live in `code_gaussian/`.
+
+### 4. Visual Gallery
+
+```bash
+python3 code_gaussian/scripts/visual_gallery.py \
   --checkpoint runs/ablation_neg4/checkpoint_epoch_40.pth \
   --data-dir /path/to/mitea \
   --output-path runs/ablation_neg4/visual_gallery.png
 ```
 
-### 4. Encoder-Based Training Path
+### 5. Encoder-Based Training Path
 
 The broader training path is still present for sparse-slice supervision experiments:
 
 ```bash
-python3 src_code/scripts/train.py \
+python3 code_gaussian/scripts/train.py \
   --data-dir /path/to/mitea \
   --run-dir runs/stabilization_v01 \
   --epochs 50
@@ -133,6 +160,16 @@ The MITEA setup currently used here is best suited for static 3D reconstruction 
 
 ## Installation & Dependencies
 
+Create the repository-local environment and install the shared dependencies:
+
+```bash
+conda create --prefix .venv --override-channels --channel conda-forge python=3.12 pip
+conda activate ./.venv
+python -m pip install -r code_gaussian/requirements.txt
+```
+
+You can also call the environment interpreter directly as `.venv/bin/python`.
+
 Core dependencies used by the current pipeline:
 
 - `torch`
@@ -146,13 +183,13 @@ Some older or optional paths may still assume additional packages such as `pytor
 
 ## Relation to Prior Project
 
-This repository is distinct from the earlier [`cardiac-volume-reconstruction`](https://github.com/tushar-nayak/cardiac-volume-reconstruction) project.
+This repository also contains a starter INR implementation adapted from the earlier [`cardiac-volume-reconstruction`](https://github.com/tushar-nayak/cardiac-volume-reconstruction) project.
 
 The older project is the stronger baseline in terms of end-to-end experimental maturity. It focuses on reconstructing 3D cardiac volumes from sparse 2D echo views using coordinate-based implicit neural representations, transfer learning, and meta-learning for fast subject adaptation. Its central result is a multi-subject reconstruction pipeline with reported Dice and IoU summaries across saved experiments.
 
 This repository explores a different modeling direction. Instead of representing anatomy with an MLP-based implicit field, it uses explicit Gaussian occupancy primitives, differentiable slice rendering, and diagnostic tooling built around occupancy stability, mesh extraction, and visual inspection. In practice, this makes `cardiac-reconstruction-evolved` more of a Gaussian-field reconstruction prototype and experimentation branch, whereas `cardiac-volume-reconstruction` is the more complete INR-based cardiac reconstruction project.
 
-In short:
+The INR baseline currently ports the coordinate MLP with positional encoding and sparse-plane occupancy supervision. It does not yet reproduce the upstream multi-subject global training or Reptile meta-learning results. The current Gaussian subject-fit script is supervised by sampled points throughout the 3D label, while the INR sees only the selected planes, so their metrics are useful as method outputs but are not yet a controlled equal-supervision comparison. In short:
 
 - `cardiac-volume-reconstruction`: established INR / meta-learning cardiac reconstruction pipeline with broader evaluation.
-- `cardiac-reconstruction-evolved`: experimental Gaussian occupancy reconstruction path focused on explicit primitives, stabilization, and mesh-oriented diagnostics.
+- `cardiac-reconstruction-evolved`: Gaussian occupancy reconstruction plus a starter sparse-plane INR path, with mesh-oriented diagnostics and room for controlled comparisons.

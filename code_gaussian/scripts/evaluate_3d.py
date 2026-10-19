@@ -10,11 +10,11 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src_code.src.data_loaders.mitea_loader import MITEADataset
-from src_code.src.models.ode_model import LatentEncoder
-from src_code.src.models.gaussian_model import GaussianModel
-from src_code.src.utils.coord_utils import sample_volume_at_points
-from src_code.src.metrics import binary_metrics, save_mesh_npz, volume_to_mesh
+from code_gaussian.src.data_loaders.mitea_loader import MITEADataset
+from code_gaussian.src.models.ode_model import LatentEncoder
+from code_gaussian.src.models.gaussian_model import GaussianModel
+from code_gaussian.src.utils.coord_utils import sample_volume_at_points
+from code_gaussian.src.metrics import binary_metrics, save_mesh_npz, volume_to_mesh
 
 def infer_num_gaussians(checkpoint, fallback):
     if checkpoint.get('type') == 'subject_gaussian_fit':

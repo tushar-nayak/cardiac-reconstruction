@@ -7,7 +7,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src_code.src.models.gaussian_model import GaussianModel
+from code_gaussian.src.models.gaussian_model import GaussianModel
 
 def check_params():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

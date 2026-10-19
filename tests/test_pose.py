@@ -1,7 +1,7 @@
 import torch
 import unittest
 
-from src_code.src.models.pose_model import axis_angle_to_matrix
+from code_gaussian.src.models.pose_model import axis_angle_to_matrix
 
 
 class PoseTests(unittest.TestCase):

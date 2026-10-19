@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from src_code.src.occupancy import evaluate_gaussian_occupancy
+from code_gaussian.src.occupancy import evaluate_gaussian_occupancy
 
 class GaussianModel(nn.Module):
     def __init__(self, num_gaussians=1000, latent_dim=128):
