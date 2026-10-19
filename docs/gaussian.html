@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HeartMaker | Gaussian Occupancy</title>
+    <link rel="stylesheet" href="styles.css?v=5">
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <p class="eyebrow">Sparse cardiac imaging to 3D occupancy</p>
+        <h1>Gaussian Occupancy Reconstruction</h1>
+        <p class="lead">
+          Stabilized Gaussian occupancy fields reconstruct a 3D cardiac label volume, with full-volume metrics, fitted mesh surfaces, and direct visual diagnostics.
+        </p>
+        <p class="project-switch"><a href="index.html">← Choose an approach</a><span aria-hidden="true"> · </span><a href="inr.html">View implicit neural representation results</a></p>
+      </header>
+
+      <section class="metrics" aria-label="Reconstruction metrics">
+        <article>
+          <span class="value">0.951</span>
+          <span class="label">full-volume accuracy</span>
+        </article>
+        <article>
+          <span class="value">0.452</span>
+          <span class="label">full-volume IoU</span>
+        </article>
+        <article>
+          <span class="value">0.623</span>
+          <span class="label">full-volume Dice</span>
+        </article>
+        <article>
+          <span class="value">1000</span>
+          <span class="label">Gaussians</span>
+        </article>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <h2>Interactive Reconstruction</h2>
+          <p>Predicted and ground-truth marching-cubes surfaces from the best completed negative-loss ablation.</p>
+        </div>
+        <div class="viewer-grid">
+          <div class="viewer-panel">
+            <h3>Prediction</h3>
+            <div id="viewer-pred" class="viewer" role="img" aria-label="Interactive 3D mesh of the predicted cardiac occupancy field"></div>
+          </div>
+          <div class="viewer-panel">
+            <h3>Ground Truth</h3>
+            <div id="viewer-gt" class="viewer" role="img" aria-label="Interactive 3D mesh of the ground-truth cardiac label"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <h2>Results</h2>
+          <p>Ground truth and predicted orthogonal slices from the best completed encoder run.</p>
+        </div>
+        <div class="image-grid">
+          <figure>
+            <img src="assets/comparison_v01.png" alt="Ground truth and predicted axial and coronal reconstruction comparison">
+            <figcaption>Direct 3D evaluation slices</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/visual_gallery.png" alt="Gallery of ground truth and predicted axial, coronal, and sagittal slices">
+            <figcaption>Orthogonal slice gallery</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section compact">
+        <h2>Method</h2>
+        <p>
+          The reconstruction represents cardiac anatomy as a set of 3D Gaussian occupancy kernels rather than a dense voxel grid.
+          Gaussian centers are initialized from labeled occupied voxels, then their positions, scales, and opacities are optimized
+          against affine-correct sampled volumetric occupancy targets. The current reported run uses a negative-loss weight of 4.
+        </p>
+        <p>
+          The occupancy value at any query point is computed with a non-saturating density rule, which accumulates nearby Gaussian
+          contributions as a soft volumetric field. After fitting, the field is sampled on a regular grid and converted into a
+          triangular surface using marching cubes at the 0.5 isosurface. The interactive viewer compares that predicted mesh
+          against a marching-cubes mesh extracted from the ground-truth label volume for the same sample.
+        </p>
+        <p>
+          This page shows the best completed encoder ablation used for visual inspection. It is not claiming population-level
+          generalization; the purpose is to make the Gaussian reconstruction path inspectable and to compare its recovered surface
+          against the available label geometry. A 2,000-Gaussian ablation remains in progress.
+        </p>
+      </section>
+    </main>
+
+    <script src="viewer.js?v=5"></script>
+  </body>
+</html>

@@ -1,22 +1,23 @@
-# Cardiac Reconstruction via Implicit Neural Representation and Gaussian Occupancy Fields
+# HeartMaker: Cardiac Reconstruction with Gaussian Occupancy and Implicit Neural Representations
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C.svg)
 ![TorchDiffEq](https://img.shields.io/badge/TorchDiffEq-Latest-orange.svg)
 
-Sparse cardiac reconstruction with stabilized Gaussian occupancy fields, differentiable slice supervision, and mesh-based evaluation for interpretable 3D anatomy recovery.
+HeartMaker is the central project for exploring two cardiac reconstruction approaches: explicit Gaussian occupancy fields and coordinate-based implicit neural representations (INRs).
 
-This repository explores a Gaussian occupancy formulation for reconstructing cardiac anatomy from sparse imaging. Instead of representing the volume with a pure implicit MLP, it uses explicit 3D Gaussian primitives, a non-saturating occupancy rule, sparse-slice supervision, and marching-cubes mesh extraction for direct visual comparison against ground truth.
+The methods live side by side in `code_gaussian/` and `code_inr/`, with shared MITEA data loading and comparable reconstruction metrics. The website starts with a method selector and keeps the result pages separate.
 
-The current strongest completed encoder result is a 40-epoch MITEA validation evaluation with 1,000 Gaussians. It is a working Gaussian-field reconstruction prototype with mesh-oriented diagnostics, not yet a mature multi-subject 4D Gaussian splatting system.
+The Gaussian method uses explicit 3D primitives and a non-saturating occupancy rule. The INR method represents occupancy as a coordinate MLP and fits it from sparse annotated planes. Their existing results use different supervision protocols, so the reported scores should be read in their own experiment context.
 
 ## What This Repo Does
 
 - Represents anatomy as explicit 3D Gaussian occupancy kernels.
+- Represents anatomy as a continuous implicit neural occupancy field.
 - Uses stabilized density aggregation: `occupancy(x) = 1 - exp(-density(x))`.
 - Supports differentiable sparse-slice supervision and pose refinement in the encoder-based path.
 - Includes a direct subject-fit pipeline that produces a usable mesh reconstruction.
-- Publishes qualitative and quantitative diagnostics through the report and GitHub Pages site.
+- Publishes separate results pages for each approach through the [HeartMaker project site](https://tushar-nayak.github.io/heart-maker/).
 
 ## Current Results
 
@@ -157,6 +158,8 @@ The MITEA setup currently used here is best suited for static 3D reconstruction 
 
 - Technical report: [report.md](report.md)
 - GitHub Pages site: [docs/index.html](docs/index.html)
+- Gaussian results page: [docs/gaussian.html](docs/gaussian.html)
+- INR results page: [docs/inr.html](docs/inr.html)
 
 ## Installation & Dependencies
 
@@ -181,15 +184,10 @@ Core dependencies used by the current pipeline:
 
 Some older or optional paths may still assume additional packages such as `pytorch3d`.
 
-## Relation to Prior Project
+## INR Results Archive
 
-This repository also contains a starter INR implementation adapted from the earlier [`cardiac-volume-reconstruction`](https://github.com/tushar-nayak/cardiac-volume-reconstruction) project.
+The earlier [`cardiac-volume-reconstruction`](https://github.com/tushar-nayak/cardiac-volume-reconstruction) project provides the published multi-subject INR results and viewers. Those results remain available on their original site and are linked from HeartMaker’s separate [INR results page](https://tushar-nayak.github.io/heart-maker/inr.html).
 
-The older project is the stronger baseline in terms of end-to-end experimental maturity. It focuses on reconstructing 3D cardiac volumes from sparse 2D echo views using coordinate-based implicit neural representations, transfer learning, and meta-learning for fast subject adaptation. Its central result is a multi-subject reconstruction pipeline with reported Dice and IoU summaries across saved experiments.
+The local INR baseline currently ports the coordinate MLP with positional encoding and sparse-plane occupancy supervision. The upstream shared-prior, pose-learning, and Reptile meta-learning workflows have not yet been migrated into `code_inr/`.
 
-This repository explores a different modeling direction. Instead of representing anatomy with an MLP-based implicit field, it uses explicit Gaussian occupancy primitives, differentiable slice rendering, and diagnostic tooling built around occupancy stability, mesh extraction, and visual inspection. In practice, this makes `cardiac-reconstruction-evolved` more of a Gaussian-field reconstruction prototype and experimentation branch, whereas `cardiac-volume-reconstruction` is the more complete INR-based cardiac reconstruction project.
-
-The INR baseline currently ports the coordinate MLP with positional encoding and sparse-plane occupancy supervision. It does not yet reproduce the upstream multi-subject global training or Reptile meta-learning results. The current Gaussian subject-fit script is supervised by sampled points throughout the 3D label, while the INR sees only the selected planes, so their metrics are useful as method outputs but are not yet a controlled equal-supervision comparison. In short:
-
-- `cardiac-volume-reconstruction`: established INR / meta-learning cardiac reconstruction pipeline with broader evaluation.
-- `cardiac-reconstruction-evolved`: Gaussian occupancy reconstruction plus a starter sparse-plane INR path, with mesh-oriented diagnostics and room for controlled comparisons.
+The current Gaussian subject-fit script uses sampled points throughout the 3D label, while the local INR baseline sees only selected planes. Their metrics are therefore not an equal-supervision comparison.

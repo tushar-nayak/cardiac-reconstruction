@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HeartMaker | Implicit Neural Representation</title>
+    <link rel="stylesheet" href="styles.css?v=5">
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <p class="eyebrow">Coordinate-based representation</p>
+        <h1>Implicit Neural Representation</h1>
+        <p class="lead">
+          Sparse echocardiographic views supervise a continuous occupancy field represented by a coordinate MLP. The results below preserve the published summaries from the earlier project.
+        </p>
+        <p class="project-switch"><a href="index.html">← Choose an approach</a><span aria-hidden="true"> · </span><a href="gaussian.html">Gaussian occupancy results</a></p>
+      </header>
+
+      <section class="metrics" aria-label="Best reported INR results">
+        <article><span class="value">0.8643</span><span class="label">best reported full-volume Dice</span></article>
+        <article><span class="value">0.7658</span><span class="label">best reported full-volume IoU</span></article>
+        <article><span class="value">536</span><span class="label">MITEA scan pairs</span></article>
+        <article><span class="value">3</span><span class="label">reported method settings</span></article>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <h2>Published results</h2>
+          <p>Test-split summaries copied from the earlier project’s README and results index; values are retained as reported.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Method</th><th>3D Dice (full)</th><th>3D IoU (full)</th></tr></thead>
+            <tbody>
+              <tr><td>Mixed stratified ED-healthy</td><td>0.8491 ± 0.0593</td><td>0.7422 ± 0.0866</td></tr>
+              <tr><td>Meta after refinement</td><td>0.8638 ± 0.0599</td><td>0.7649 ± 0.0893</td></tr>
+              <tr><td>Mixed, no stratifiers</td><td>0.8643 ± 0.0605</td><td>0.7658 ± 0.0904</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-switch">The best full-volume overlap in the saved summaries is the mixed model without stratifiers. The meta-learned initialization remains the strongest adapted stratified result.</p>
+      </section>
+
+      <section class="section compact">
+        <h2>Original project results</h2>
+        <p>The earlier repository and its published interactive viewers remain intact. Open its original results site, report, results index, or featured reconstructions directly.</p>
+        <div class="result-links">
+          <a href="https://tushar-nayak.github.io/cardiac-volume-reconstruction/">Original interactive results site ↗</a>
+          <a href="https://tushar-nayak.github.io/cardiac-volume-reconstruction/results_index.html">Original results index ↗</a>
+          <a href="https://tushar-nayak.github.io/cardiac-volume-reconstruction/report.html">Original report ↗</a>
+          <a href="https://tushar-nayak.github.io/cardiac-volume-reconstruction/checkpoints/html_visualizations/MITEA_107_scan1_ED.nii_mixed_2d_slices.html">Featured mixed slices · MITEA 107 ED ↗</a>
+          <a href="https://tushar-nayak.github.io/cardiac-volume-reconstruction/checkpoints/html_visualizations/MITEA_107_scan1_ED.nii_mixed_3d_mesh.html">Featured mixed reconstruction · MITEA 107 ED ↗</a>
+          <a href="https://github.com/tushar-nayak/cardiac-volume-reconstruction">Original source repository ↗</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
