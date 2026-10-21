@@ -96,10 +96,13 @@ def holm(p_values):
     return adjusted.tolist()
 
 
-def paired_comparisons(means, reference="inr", metric=PRIMARY):
+def paired_comparisons(means, reference="inr", metric=PRIMARY, methods=None):
+    """Paired tests of ``methods`` (default: all) against ``reference``, Holm over the family."""
     comparisons = []
     for (method, layout) in sorted(means):
         if method == reference or (reference, layout) not in means:
+            continue
+        if methods is not None and method not in methods:
             continue
         ref, other = means[(reference, layout)], means[(method, layout)]
         subjects = sorted(s for s in set(ref) & set(other)
@@ -122,7 +125,10 @@ def paired_comparisons(means, reference="inr", metric=PRIMARY):
 def report(args):
     rows = load_runs(args.runs)
     for row in rows:
-        if row.get("split") != args.expect_subset:
+        # v2 confirmatory runs are cross-fitted per fold, so their rows carry split fold1..fold4.
+        if row.get("split") != args.expect_subset and not (
+                args.family == "v2" and args.expect_subset == "confirmatory"
+                and row.get("split") in ("fold1", "fold2", "fold3", "fold4")):
             raise ValueError(f"{row['run_dir']} contains split {row.get('split')!r}, "
                              f"expected {args.expect_subset!r}")
     check_pairing(rows)
@@ -143,8 +149,18 @@ def report(args):
     failures = [{key: row.get(key) for key in ("method", "plane_layout", "subject", "seed", "error")}
                 for row in rows if row.get("status") == "failed"]
     output = {"runs": args.runs, "subset": args.expect_subset, "primary_metric": PRIMARY,
-              "subjects": len(categories), "failed_runs": failures,
-              "paired_vs_inr": paired_comparisons(means), **summary}
+              "subjects": len(categories), "failed_runs": failures, "family": args.family, **summary}
+    if args.family == "v1":
+        output["paired_vs_inr"] = paired_comparisons(means)
+    else:
+        # Protocol v2: Holm family is the five new methods vs INR on both layouts (10 tests);
+        # the secondary pairs are descriptive (no Holm across pairs).
+        output["paired_vs_inr"] = paired_comparisons(means, methods=V2_METHODS)
+        if len(output["paired_vs_inr"]) != 2 * len(V2_METHODS):
+            raise ValueError(f"v2 primary family needs {2 * len(V2_METHODS)} comparisons, "
+                             f"found {len(output['paired_vs_inr'])}")
+        output["secondary"] = {f"{method}_vs_{reference}": paired_comparisons(means, reference, methods=(method,))
+                               for method, reference in V2_SECONDARY}
     path = Path(args.output)
     if path.exists():
         raise FileExistsError(path)
@@ -175,6 +191,44 @@ def latex_table(descriptive):
         lines.append(f"{layout} & {method} & " + " & ".join(cells) + r" \\")
     lines += [r"\bottomrule", r"\end{tabular}", ""]
     return "\n".join(lines)
+
+
+V2_METHODS = ("rbf", "gp", "ssm", "unet", "prior_inr")
+V2_SECONDARY = (("rbf", "interpolation"), ("gp", "rbf"), ("unet", "ssm"), ("prior_inr", "ssm"))
+
+
+def select_config(args):
+    """Protocol v2 fold-0 rule: best layout-averaged unobserved Dice; ties (<= 0.002) go to
+    the earlier candidate in grid order."""
+    scores = []
+    for name, orthogonal, axial in args.candidate:
+        rows = load_runs([orthogonal, axial])
+        if any(row.get("split") != "fold0" for row in rows):
+            raise ValueError(f"{name}: selection must use fold-0 runs only")
+        means = subject_means(rows)
+        if sorted(layout for _, layout in means) != ["axial", "orthogonal"] or len(means) != 2:
+            raise ValueError(f"{name}: expected one method on both layouts, found {sorted(means)}")
+        (method, _), = {(m, None) for m, _ in means}
+        layouts = [means[(method, layout)] for layout in ("orthogonal", "axial")]
+        subjects = sorted(set(layouts[0]) & set(layouts[1]))
+        per_layout = [float(np.mean([layout[s][PRIMARY] for s in subjects])) for layout in layouts]
+        scores.append({"candidate": name, "method": method, "subjects": len(subjects),
+                       "orthogonal": per_layout[0], "axial": per_layout[1],
+                       "layout_averaged": float(np.mean([np.mean([l[s][PRIMARY] for l in layouts])
+                                                          for s in subjects])),
+                       "failed_runs": sum(row.get("status") == "failed" for row in rows)})
+    best = max(score["layout_averaged"] for score in scores)
+    selected = next(score for score in scores if score["layout_averaged"] >= best - 0.002)
+    result = {"rule": "protocol_v2 fold-0 selection", "scores": scores, "selected": selected["candidate"]}
+    path = Path(args.output)
+    if path.exists():
+        raise FileExistsError(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2) + "\n")
+    for score in scores:
+        print(f"{score['candidate']:>28}: orth {score['orthogonal']:.4f} axial {score['axial']:.4f} "
+              f"avg {score['layout_averaged']:.4f} (n={score['subjects']}, failed={score['failed_runs']})")
+    print("selected:", result["selected"])
 
 
 def select_gaussian(args):
@@ -229,8 +283,14 @@ def main():
     summary.add_argument("--runs", nargs="+", required=True)
     summary.add_argument("--expect-subset", default="confirmatory")
     summary.add_argument("--output", required=True)
+    summary.add_argument("--family", choices=("v1", "v2"), default="v1",
+                         help="Holm family: v1 (Gaussian, interpolation vs INR) or v2 (rbf, gp, ssm, unet, prior_inr vs INR)")
+    config = commands.add_parser("select-config", help="Protocol v2 fold-0 configuration rule")
+    config.add_argument("--candidate", nargs=3, action="append", required=True,
+                        metavar=("NAME", "ORTH_RUN", "AXIAL_RUN"), help="Repeat in grid order")
+    config.add_argument("--output", required=True)
     args = parser.parse_args()
-    select_gaussian(args) if args.command == "select-gaussian" else report(args)
+    {"select-gaussian": select_gaussian, "report": report, "select-config": select_config}[args.command](args)
 
 
 if __name__ == "__main__":

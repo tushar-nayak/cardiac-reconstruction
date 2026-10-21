@@ -189,3 +189,33 @@ values). An all-background section is assigned the constant signed distance
 `-(height + width)` and an all-foreground section `+(height + width)`, in
 voxels. Interpolated slices therefore remain foreground only very close to a
 nonempty observed section adjacent to an empty one.
+
+### 2026-10-20 — Fold-0 selection: Gaussian recipe frozen
+
+`scripts/summarize_benchmark.py select-gaussian` selected `uniform_lr0.001`
+(uniform center initialization, learning rate 0.001) by the primary criterion.
+Layout-averaged, seed-averaged unobserved Dice over 22 fold-0 subjects: uniform
+0.8545, observed/lr 0.003 0.8043 (difference −0.0501, outside the 0.002 tie
+threshold). Per layout: uniform 0.9021 orthogonal / 0.8069 axial; observed
+0.9420 orthogonal / 0.6667 axial. Fold 0 ran 22 subjects × 3 seeds per learned
+method and layout, with 0 failed runs and 0 empty predictions.
+
+No method, setting, or metric was changed after the fold-0 runs. On the axial
+layout INR and interpolation over-extend along axis 0 (median predicted volume
+758 and 675 mL against a 297 mL target); this is recorded as an observed property
+of the frozen methods, not corrected. Outputs: `runs/protocol_v1_fold0_*`,
+`runs/protocol_v1_fold0_gaussian_selection.json`. This entry was written before
+any fold-1–4 command was run.
+
+### 2026-10-20 — Confirmatory run completed
+
+Folds 1–4 (86 subjects) were run once with the settings frozen above, using
+`runs/protocol_v1_confirmatory_{orthogonal,axial}_{inr_interp,gaussian}`
+(start 15:26, end 17:57 CDT). 1,204 runs (258 per learned method and layout, 86
+per interpolation layout); 0 failed runs, 0 empty predictions, no interruptions
+or reruns. Partial results were not inspected while runs were in progress. The
+confirmatory report is `runs/protocol_v1_confirmatory_report.json` (with `.tex`).
+The test split was not loaded.
+
+Analyses added after the confirmatory run, and therefore not prespecified:
+the MITEA_071 isosurface panel and per-method fitting times (both descriptive).

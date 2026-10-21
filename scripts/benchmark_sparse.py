@@ -17,12 +17,19 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from scipy import stats
 from torch.nn import functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from cardiac_common.cohort import enumerate_volumes, load_label
 from cardiac_common.interpolation import interpolate_sections, plane_sections
+from cardiac_common.gp import VARIANCE_STRIDE, gp_complete
+from cardiac_common.population import check_not_trained_on
+from cardiac_common.prior_inr import fit_prior_inr
+from cardiac_common.rbf import rbf_complete
+from cardiac_common.ssm import fit_ssm
+from cardiac_common.unet import UNet3D, predict_unet
 from cardiac_common.sparse import (
     evaluate_grid, plane_samples, reconstruction_metrics, select_planes,
 )
@@ -157,7 +164,7 @@ def legacy_samples(args):
 
 
 def build_model(method, args, points, labels):
-    if method == "inr":
+    if method in ("inr", "prior_inr"):
         return ImplicitOccupancyNetwork(args.hidden_dim, args.layers, args.frequencies), "network_default"
     model = SparseGaussianField(args.num_gaussians)
     if args.gaussian_init == "observed":
@@ -178,6 +185,9 @@ def run(args):
     write_json(output / "splits.json", split_info)
     write_json(output / "config.json", vars(args))
     protocol = "mitea_sparse_planes_protocol_v1" if args.manifest else "fixed_sparse_binary_label_planes_v1"
+    if set(args.methods) & set(PROTOCOL_V2):
+        protocol = "mitea_sparse_planes_protocol_v2"
+    population = load_population_models(args)
     results = []
     for sample in samples:
         target = sample["occupancy_ed"].float()
@@ -187,8 +197,10 @@ def run(args):
         digest = hashlib.sha256(observed.numpy().tobytes() + labels.numpy().tobytes()).hexdigest()
         save_dense = args.save_occupancy or sample["subject"] in set(args.save_occupancy_subjects or ())
         for method in args.methods:
-            # The nonlearned baseline is deterministic, so it runs once per subject.
-            for seed in ([None] if method == "interpolation" else args.seeds):
+            # Deterministic methods run once per subject; U-Net seeds are its training seeds.
+            seeds = ([None] if method in DETERMINISTIC else
+                     sorted(population["unet"]) if method == "unet" else args.seeds)
+            for seed in seeds:
                 row = {
                     "protocol": protocol, "method": method,
                     "subject": sample["subject"], "fold": sample.get("fold"),
@@ -206,7 +218,7 @@ def run(args):
                 destination.mkdir(parents=True)
                 try:
                     probability, model = evaluate_method(method, row, sample, planes, points, labels,
-                                                         observed, args, device, seed)
+                                                         observed, args, device, seed, population)
                 except Exception as error:  # Failures are recorded, never silently dropped.
                     row.update(status="failed", error=f"{type(error).__name__}: {error}",
                                traceback=traceback.format_exc())
@@ -232,13 +244,100 @@ def run(args):
     print(f"Results saved to {output}", flush=True)
 
 
-def evaluate_method(method, row, sample, planes, points, labels, observed, args, device, seed):
+DETERMINISTIC = ("interpolation", "rbf", "ssm", "gp")
+V2_METHODS = ("rbf", "ssm", "unet", "gp")  # completed by complete_v2
+PROTOCOL_V2 = V2_METHODS + ("prior_inr",)
+
+
+def load_population_models(args):
+    """Population artifacts, loaded once; U-Nets are keyed by training seed."""
+    models = {}
+    if {"ssm", "prior_inr"} & set(args.methods):
+        models["ssm"] = torch.load(args.ssm_model, weights_only=False)
+        models["ssm"]["path"] = args.ssm_model
+    if "unet" in args.methods:
+        models["unet"] = {}
+        for path in args.unet_models:
+            artifact = torch.load(path, weights_only=False)
+            if artifact["seed"] in models["unet"]:
+                raise ValueError(f"two U-Net artifacts share training seed {artifact['seed']}")
+            artifact["path"] = path
+            models["unet"][artifact["seed"]] = artifact
+    return models
+
+
+def complete_v2(method, sample, planes, observed, args, device, seed, population):
+    """Run a protocol-v2 method; returns (binary or probability volume, row fields)."""
+    target = sample["occupancy_ed"].numpy() >= 0.5
+    shape = target.shape
+    observed = observed.numpy()
+    if method == "gp":
+        mask, mean, sd, centres = gp_complete(plane_sections(target, planes), shape, args.gp_length,
+                                              args.gp_prior_mean, device)
+        fields = {"initialization": f"gp_matern52_length{args.gp_length}_mean{args.gp_prior_mean}",
+                  "parameter_count": centres}
+        fields.update(gp_uncertainty_summary(mean, sd, target, observed))
+        return mask.astype(np.float32), fields
+    if method == "rbf":
+        mask, centres = rbf_complete(plane_sections(target, planes), shape, args.rbf_kernel,
+                                     args.rbf_smoothing, device)
+        return mask.astype(np.float32), {"initialization": f"rbf_{args.rbf_kernel}_smoothing{args.rbf_smoothing}",
+                                         "parameter_count": centres + 4}
+    artifact = population[method] if method == "ssm" else population["unet"][seed]
+    check_not_trained_on(sample["subject"], artifact)
+    fields = {"population_model": artifact["path"], "training_subjects": len(artifact["training_subjects"])}
+    if method == "ssm":
+        mask, info = fit_ssm(artifact, np.argwhere(observed), target[observed].astype(np.float32), shape,
+                             args.ssm_modes, args.ssm_prior, device)
+        fields.update(initialization=f"ssm_K{args.ssm_modes}_prior{args.ssm_prior}",
+                      parameter_count=args.ssm_modes + 3, final_training_bce=info["final_loss"],
+                      ssm_translation_zyx=info["translation_zyx"])
+        return mask.astype(np.float32), fields
+    model = UNet3D().to(device)
+    model.load_state_dict(artifact["state_dict"])
+    probability = predict_unet(model, observed, np.where(observed, target, False), shape, device)
+    fields.update(initialization=f"unet_lr{artifact['lr']}_it{artifact['iterations']}",
+                  parameter_count=sum(p.numel() for p in model.parameters()))
+    return probability, fields
+
+
+def gp_uncertainty_summary(mean, sd, target, observed):
+    """Descriptive: does the posterior SD flag the unobserved voxels the GP gets wrong?
+
+    On the strided grid's unobserved voxels: AUROC of the score -|mean|/SD for
+    misclassified voxels, the share of misclassified voxels whose mean lies within
+    1.96 SD of zero, and the median SD (mm).
+    """
+    step = VARIANCE_STRIDE
+    unobserved = ~observed[::step, ::step, ::step]
+    wrong = ((mean >= 0) != target[::step, ::step, ::step])[unobserved]
+    sd = sd[unobserved]
+    score = -np.abs(mean[unobserved]) / np.maximum(sd, 1e-6)
+    summary = {"gp_median_sd_unobserved_mm": float(np.median(sd)), "gp_error_voxels_strided": int(wrong.sum())}
+    if 0 < wrong.sum() < len(wrong):
+        ranks = stats.rankdata(score)
+        positives = wrong.sum()
+        summary["gp_error_auroc"] = float((ranks[wrong].sum() - positives * (positives + 1) / 2)
+                                          / (positives * (len(wrong) - positives)))
+        summary["gp_errors_within_1.96sd"] = float((score[wrong] > -1.96).mean())
+    return summary
+
+
+def evaluate_method(method, row, sample, planes, points, labels, observed, args, device, seed, population=None):
     """Fit (or interpolate) one method and attach timing and metrics to ``row``."""
     target = sample["occupancy_ed"].float()
     shape = tuple(target.shape)
     stride = args.eval_stride
     print(f"{sample['subject']} {method} seed={seed} planes={planes}", flush=True)
-    if method == "interpolation":
+    if method in V2_METHODS:
+        started = time.perf_counter()
+        volume, fields = complete_v2(method, sample, planes, observed, args, device, seed, population)
+        sync(device)
+        seconds = time.perf_counter() - started
+        probability = torch.from_numpy(np.ascontiguousarray(volume[::stride, ::stride, ::stride]))
+        model, final_loss, eval_seconds, peak = None, fields.pop("final_training_bce", None), 0.0, None
+        row.update(learning_rate=None, optimizer_steps=0, **fields)
+    elif method == "interpolation":
         started = time.perf_counter()
         mask, variant = interpolate_sections(plane_sections(target.numpy(), planes), shape,
                                              args.plane_layout)
@@ -252,14 +351,33 @@ def evaluate_method(method, row, sample, planes, points, labels, observed, args,
         model = model.to(device)
         if device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(device)
-        seconds, final_loss = fit_field(model, points, labels, args, device, seed)
+        if method == "prior_inr":
+            artifact = population["ssm"]
+            check_not_trained_on(sample["subject"], artifact)
+            started = time.perf_counter()
+            target_np = target.numpy() >= 0.5
+            prior, _ = fit_ssm(artifact, np.argwhere(observed.numpy()), target_np[observed.numpy()].astype(np.float32),
+                               shape, args.ssm_modes, args.ssm_prior, device)
+            prior_seconds = time.perf_counter() - started
+            torch.manual_seed(seed)
+            seconds, final_loss, distill_loss = fit_prior_inr(
+                model, points, labels, observed, prior, args.steps, args.prior_inr_lr, args.batch_size,
+                args.prior_inr_weight, seed, device)
+            seconds += prior_seconds
+            initialization = (f"ssm_K{args.ssm_modes}_prior{args.ssm_prior}_distilled_"
+                              f"finetune_lr{args.prior_inr_lr}_weight{args.prior_inr_weight}")
+            row.update(population_model=artifact["path"], training_subjects=len(artifact["training_subjects"]),
+                       prior_fit_seconds=prior_seconds, distill_final_bce=distill_loss)
+        else:
+            seconds, final_loss = fit_field(model, points, labels, args, device, seed)
         sync(device)
         started = time.perf_counter()
         probability = evaluate_grid(model, shape, device, args.eval_chunk_size, stride)
         sync(device)
         eval_seconds = time.perf_counter() - started
         peak = torch.cuda.max_memory_allocated(device) / 1024**2 if device.type == "cuda" else None
-        row.update(initialization=initialization, learning_rate=args.lr,
+        row.update(initialization=initialization,
+                   learning_rate=args.prior_inr_lr if method == "prior_inr" else args.lr,
                    optimizer_steps=args.steps,
                    parameter_count=sum(p.numel() for p in model.parameters()))
     if not torch.isfinite(probability).all():
@@ -283,7 +401,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--run-dir", required=True, help="New output directory; never overwrites a run")
-    parser.add_argument("--methods", nargs="+", choices=("inr", "gaussian", "interpolation"),
+    parser.add_argument("--methods", nargs="+", choices=("inr", "gaussian", "interpolation", "rbf", "ssm", "unet", "gp", "prior_inr"),
                         default=["inr", "gaussian"])
     parser.add_argument("--manifest", default=None,
                         help="Frozen cohort manifest; selects subjects with --subset instead of --split")
@@ -311,6 +429,18 @@ def main():
     parser.add_argument("--num-gaussians", type=int, default=256)
     parser.add_argument("--gaussian-init", choices=("uniform", "observed"), default="uniform",
                         help="Optionally seed Gaussian centers using observed foreground coordinates only")
+    parser.add_argument("--rbf-kernel", choices=("r", "r3"), default="r", help="Protocol v2 RBF kernel")
+    parser.add_argument("--rbf-smoothing", type=float, default=0.0)
+    parser.add_argument("--ssm-model", default=None, help="Protocol v2 shape-model artifact")
+    parser.add_argument("--ssm-modes", type=int, default=20)
+    parser.add_argument("--ssm-prior", type=float, default=0.01)
+    parser.add_argument("--unet-models", nargs="+", default=None,
+                        help="Protocol v2 U-Net artifacts, one per training seed")
+    parser.add_argument("--gp-length", type=float, default=20.0, help="Protocol v2 GP Matern length (mm)")
+    parser.add_argument("--gp-prior-mean", type=float, default=-10.0, help="Protocol v2 GP prior mean (mm)")
+    parser.add_argument("--prior-inr-lr", type=float, default=1e-3, help="Protocol v2 prior_inr fine-tuning lr")
+    parser.add_argument("--prior-inr-weight", type=float, default=0.0,
+                        help="Protocol v2 prior_inr weight of the prior BCE during fine-tuning")
     parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument("--eval-chunk-size", type=int, default=4096)
     parser.add_argument("--eval-stride", type=int, default=1, help="Use >1 only for coarse smoke checks")
@@ -334,6 +464,12 @@ def main():
             parser.error("--sample-indices/--all-subjects apply only to the legacy split")
     elif args.subset or args.subjects:
         parser.error("--subset and --subjects require --manifest")
+    if {"ssm", "prior_inr"} & set(args.methods) and not args.ssm_model:
+        parser.error("--methods ssm/prior_inr require --ssm-model")
+    if args.gp_length <= 0 or args.prior_inr_lr <= 0 or args.prior_inr_weight < 0:
+        parser.error("GP length and prior_inr lr must be positive; prior_inr weight non-negative")
+    if "unet" in args.methods and not args.unet_models:
+        parser.error("--methods unet requires --unet-models")
     if args.axial_fractions is not None and args.plane_layout != "axial":
         parser.error("--axial-fractions applies only to the axial layout")
     run(args)

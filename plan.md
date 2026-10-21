@@ -73,6 +73,10 @@ Amendment 1 in `benchmarks/protocol_v1.md`.
 
 ## Phase 2: Pilot on fold 0 (about 1.5 h of compute)
 
+**Complete (2026-10-20).** 440 runs in 63 min, 0 failed, 0 empty. Rule selected
+`uniform_lr0.001` (layout-averaged unobserved Dice 0.854 vs 0.804). Frozen in
+the deviation log before any fold-1–4 run. Outputs: `runs/protocol_v1_fold0_*`.
+
 Fold 0 is the only place where settings may change. Run everything from the
 repository root. Every `--run-dir` must be new; the runner refuses to
 overwrite.
@@ -137,6 +141,11 @@ any fold-1–4 command. If a method is broken, fix it now, log the fix, and reru
 
 ## Phase 3: Confirmatory runs (about 3.5 h of compute)
 
+**Complete (2026-10-20).** 1,204 runs on 86 subjects in 2 h 31 min, 0 failed,
+0 empty. Report: `runs/protocol_v1_confirmatory_report.{json,tex}`. Headline:
+orthogonal INR 0.935 vs SEI 0.926 vs Gaussian 0.904 unobserved Dice (INR > SEI
+by 0.012, Holm p = 2e-13); parallel Gaussian 0.820 vs SDF 0.553 vs INR 0.514.
+
 Runs the 86 subjects in folds 1–4 once, with settings frozen in Phase 2. Do not
 inspect partial results to decide whether to continue, and never pass
 `--subset test`.
@@ -199,6 +208,11 @@ log.
 
 ## Phase 4: Analysis (1–2 days)
 
+**In progress.** Done: main table, paired per-subject plot, subgroup medians,
+largest-component sensitivity, MITEA_071 surface panel (ISBI draft in
+`../cardiac-recon-report/isbi2027/`). Remaining: Bland–Altman, component
+histogram, best/median/worst gallery.
+
 - **Main table:** method × layout, median and IQR, with paired p-values against
   INR.
 - **Subgroups by pathology:** healthy vs hypertrophy/HCM vs amyloid vs DCM.
@@ -234,6 +248,78 @@ log.
 
 **Total: about 2–3 weeks.** The critical path is Phases 1–3 (about a week). The
 MITEA permission reply may become the actual bottleneck.
+
+## Track 2: Three more method families (protocol v2)
+
+Goal: add a population shape prior, a learned feed-forward completion network,
+and a pose-agnostic non-learned interpolant to the same benchmark, so the
+paper compares per-subject fields (v1) with population priors. This track does
+not touch the ISBI submission; the ISBI paper stays a v1 paper.
+
+| Method | Family | Uses training labels? | Runs |
+| --- | --- | --- | --- |
+| `rbf` | Polyharmonic RBF implicit surface fitted to section signed distances (Turk & O'Brien style) | No | once per subject |
+| `ssm` | PCA model of signed distance maps from training subjects, fitted to sections (Leventon style) | Yes | once per subject |
+| `unet` | 3D U-Net mapping (section labels, observation mask) to occupancy | Yes | per training seed |
+
+**Facts that shape the design** (from development-label statistics only):
+the LV long axis lies along array axis 2 in all 108 development subjects
+(principal-axis component 0.96 ± 0.04), and the foreground centroid sits at
+0.53/0.48/0.54 of the array shape (SD about 0.03). So `ssm` and `unet` work in a
+fixed 128 × 128 × 160 voxel crop centred on the array centre, chosen from the
+array shape only. Predictions outside the crop are background; any target
+foreground outside the crop counts as error.
+
+**Data use (cross-fitting).** Population models never see the subject they
+are evaluated on, and never see the test split:
+- Development: evaluate fold 0 with models trained on folds 1–4.
+- Confirmatory: evaluate fold k (k = 1..4) with models trained on folds
+  {0, 1, 2, 3, 4} \ {k}. The four fold results together cover the 86
+  confirmatory subjects.
+- Every model artifact stores its training subject list; the runner refuses
+  to evaluate a subject that appears in it.
+- v1 INR and interpolation results are reused as comparators; the report
+  checks observation fingerprints match.
+
+### Phase 7: Protocol v2 (½ day)
+- [x] Draft `benchmarks/protocol_v2.md`: methods, tuning grids and budget on
+      fold 0, cross-fitting, primary comparisons (each new method vs INR per
+      layout; Holm over 6), secondary (rbf vs v1 interpolation).
+- [ ] **You review and freeze it** before any confirmatory (folds 1–4) run.
+
+### Phase 8: Implementation (2–3 days)
+- [x] `cardiac_common/rbf.py`: GPU polyharmonic RBF fit/evaluate.
+- [x] `cardiac_common/population.py`: array-centred crop, SDF maps,
+      training-subject guard.
+- [x] `cardiac_common/ssm.py` + `scripts/train_ssm.py`: PCA on SDF maps;
+      fit modes + translation to sections with a Mahalanobis prior.
+- [x] `cardiac_common/unet.py` + `scripts/train_unet.py`: small 3D U-Net,
+      mixed precision, trained on random plane placements.
+- [x] Runner: `--methods rbf ssm unet`, `--ssm-model`, `--unet-models`, `--rbf-kernel`, etc.
+- [x] Tests for each, including the leakage guard; full suite passes.
+
+### Phase 9: Fold-0 development (1–2 days)
+- [x] Tune each method within its predeclared grid on fold 0 only.
+- [x] Log the selected settings in the v2 deviation log (rbf r³/λ0.01; ssm K20/λ0.001; unet lr3e-4/4k it, 3 seeds). Freeze pending your review.
+
+### Phase 9b: Two more methods (added 2026-10-21)
+- [x] `cardiac_common/gp.py`: GP implicit surface (Matérn-5/2, constant prior
+      mean) with a posterior-SD uncertainty map; `--methods gp`.
+- [x] `cardiac_common/prior_inr.py`: INR initialised by distilling the fitted
+      shape model, then fine-tuned on the sections; `--methods prior_inr`.
+- [x] Protocol v2 draft: methods, grids (6 + 6), Holm family 6 → 10, and a
+      disclosure that both were added after the first three were tuned.
+- [x] Tests (64 pass).
+- [ ] Fold-0 grids running in tmux (`v2gp`, then `v2prior_inr`); select and log.
+
+### Phase 10: Confirmatory cross-fitting (about 1 day of GPU)
+- [ ] Train population models for k = 1..4; run all three methods on each fold.
+- [ ] Report: v2 methods + v1 comparators, 86 subjects, Holm over 10.
+
+### Phase 11: Write-up
+- [ ] arXiv version: v1 + v2 benchmark as the main result.
+- [ ] Follow-up: view misplacement and apical layouts (the `rbf` method
+      already handles arbitrary orientations), EF endpoint vs Simpson.
 
 ## Open decisions
 
