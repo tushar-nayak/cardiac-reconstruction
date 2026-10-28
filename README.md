@@ -44,6 +44,43 @@ sparse-view performance or population-level generalization.
 See [the restoration notes](benchmarks/may2026_gaussian_reference.md) for
 commands, geometry diagnostics, and the remaining limitations.
 
+### Sparse-plane benchmark and FeEcho4D external cohort
+
+The separate MITEA sparse-plane benchmark uses three known-position sections
+and subject-level held-out evaluation. On the frozen 26-subject test set, direct
+INR median unobserved-voxel Dice was 0.934 with orthogonal planes and 0.512
+with parallel planes; population-informed methods were stronger across the two
+layouts. See [`protocol_v2.md`](benchmarks/protocol_v2.md) for the frozen
+protocol; detailed MITEA results are reported in the manuscript.
+
+The separate FeEcho4D analysis is exploratory and excluded from the current
+MITEA-focused manuscript. Its completed view-count/coverage experiment has
+2,080 successful runs across 52 annotated fetal subjects. Signed-distance
+interpolation outscored direct INR in every tested view layout; the full
+results and limits are documented in the
+[ablation protocol](benchmarks/feecho4d_ablation_v1.md) and
+[audited results](benchmarks/feecho4d_ablation_v1_results.md). This is label
+completion in radial index/angle coordinates; the archive lacks per-subject
+physical rotation-center metadata, so it is neither Cartesian 3D
+reconstruction nor clinical validation. The earlier three-view INR/Gaussian
+pilot is retained separately in its
+[protocol](benchmarks/feecho4d_external_protocol.md) and
+[results](benchmarks/feecho4d_external_results.md); those pilot scores should
+not be presented as the full external-cohort comparison.
+
+### Exploratory NeRF ablation
+
+The MITEA NeRF pilot and ablation are separate from the paper's sparse-plane
+INR/Gaussian benchmark. MITEA provides reconstructed 3D scans rather than posed
+NeRF camera images, so this study renders synthetic orthographic views from
+complete volumes to assess radiance-field and renderer settings. It does not
+measure sparse-plane reconstruction or clinical performance. See the
+[frozen ablation protocol](benchmarks/nerf_mitea_ablation_v1.md),
+[results](benchmarks/nerf_mitea_ablation_v1_results.md),
+[`train_nerf_mitea.py`](scripts/train_nerf_mitea.py),
+[`run_nerf_ablation.py`](scripts/run_nerf_ablation.py), and
+[`summarize_nerf_ablation.py`](scripts/summarize_nerf_ablation.py).
+
 ### Earlier encoder experiment
 
 Current best completed encoder result from `runs/ablation_neg4`:

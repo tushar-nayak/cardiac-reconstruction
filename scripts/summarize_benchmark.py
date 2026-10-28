@@ -1,4 +1,4 @@
-"""Subject-level statistics for the protocol-v1 sparse-plane benchmark.
+"""Subject-level statistics for the sparse-plane reconstruction benchmarks.
 
 ``select-gaussian`` applies the fold-0 Gaussian recipe rule. ``report`` builds
 the confirmatory summary: seeds are averaged within each subject first, then
@@ -8,7 +8,7 @@ against INR. See ``benchmarks/protocol_v1.md``.
 
 import argparse
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -131,6 +131,29 @@ def report(args):
                 and row.get("split") in ("fold1", "fold2", "fold3", "fold4")):
             raise ValueError(f"{row['run_dir']} contains split {row.get('split')!r}, "
                              f"expected {args.expect_subset!r}")
+    if args.expect_subset == "test":
+        if not args.manifest:
+            raise ValueError("final test report requires the frozen --manifest")
+        manifest = json.loads(Path(args.manifest).read_text())
+        test_subjects = set(manifest["splits"]["test"])
+        observed_subjects = {row["subject"] for row in rows}
+        if len(test_subjects) != 26 or observed_subjects != test_subjects:
+            raise ValueError("final test report must contain exactly the 26 subjects in the frozen manifest")
+        required_methods = set(V2_METHODS) | {"inr", "gaussian", "interpolation"}
+        for layout in ("orthogonal", "axial"):
+            for method in required_methods:
+                method_rows = [row for row in rows if row["method"] == method
+                               and row["plane_layout"] == layout]
+                covered = {row["subject"] for row in method_rows if row.get("status") == "ok"}
+                expected_seeds = {17, 23, 42} if method in {"inr", "gaussian", "unet", "prior_inr"} else {None}
+                counts = Counter((row["subject"], row.get("seed")) for row in method_rows)
+                if (covered != test_subjects or any(row.get("status") != "ok" for row in method_rows)
+                        or any(row.get("empty_prediction") for row in method_rows)
+                        or any(counts[(subject, seed)] != 1 for subject in test_subjects
+                               for seed in expected_seeds)
+                        or set(counts) != {(subject, seed) for subject in test_subjects
+                                           for seed in expected_seeds}):
+                    raise ValueError(f"incomplete or failed final test results for {method}/{layout}")
     check_pairing(rows)
     means = subject_means(rows)
     lcc_means = subject_means(rows, {name: METRICS[name] for name in LCC_METRICS}, lcc=True)
@@ -194,7 +217,8 @@ def latex_table(descriptive):
 
 
 V2_METHODS = ("rbf", "gp", "ssm", "unet", "prior_inr")
-V2_SECONDARY = (("rbf", "interpolation"), ("gp", "rbf"), ("unet", "ssm"), ("prior_inr", "ssm"))
+V2_SECONDARY = (("rbf", "interpolation"), ("gp", "rbf"), ("unet", "ssm"),
+                ("prior_inr", "ssm"), ("gaussian", "inr"), ("gaussian", "interpolation"))
 
 
 def select_config(args):
@@ -282,6 +306,8 @@ def main():
     summary = commands.add_parser("report", help="Confirmatory subject-level report")
     summary.add_argument("--runs", nargs="+", required=True)
     summary.add_argument("--expect-subset", default="confirmatory")
+    summary.add_argument("--manifest", default=None,
+                         help="Frozen split manifest; required for final test reports")
     summary.add_argument("--output", required=True)
     summary.add_argument("--family", choices=("v1", "v2"), default="v1",
                          help="Holm family: v1 (Gaussian, interpolation vs INR) or v2 (rbf, gp, ssm, unet, prior_inr vs INR)")

@@ -78,3 +78,15 @@ def training_subjects(manifest, folds):
     if set(subjects) & set(manifest["splits"]["test"]):
         raise RuntimeError("training folds overlap the held-out test split")
     return subjects
+
+
+def listed_training_subjects(manifest, subjects):
+    """Sorted development subjects from an explicit list; the test split is never returned."""
+    if len(set(subjects)) != len(subjects):
+        raise ValueError("training subject list contains duplicates")
+    if set(subjects) & set(manifest["splits"]["test"]):
+        raise RuntimeError("training subject list overlaps the held-out test split")
+    unknown = sorted(set(subjects) - {s for fold in manifest["splits"]["folds"] for s in fold})
+    if unknown:
+        raise ValueError(f"not development subjects: {unknown}")
+    return sorted(subjects)

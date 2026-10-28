@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from cardiac_common.population import (CROP_SHAPE, SDF_CLIP_MM, crop_origin, crop_slices,
+from cardiac_common.population import (CROP_SHAPE, SDF_CLIP_MM, crop_origin, crop_slices, from_crop,
                                         signed_distance_3d, to_crop)
 
 TEMPERATURE_MM = 2.0
@@ -77,3 +77,8 @@ def fit_ssm(artifact, observed_zyx, labels, shape, modes, prior_weight, device="
     mask[src] = crop[dst]
     return mask, {"coefficients": coefficients.detach().cpu().tolist(),
                   "translation_zyx": offset.detach().cpu().tolist(), "final_loss": float(loss.detach())}
+
+
+def mean_shape(artifact, shape):
+    """The model's mean signed-distance map thresholded at 0, pasted into the native grid."""
+    return from_crop(artifact["mean"].float().numpy() >= 0, shape)

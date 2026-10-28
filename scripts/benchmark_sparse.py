@@ -5,6 +5,10 @@ train an echo-image encoder or use unobserved labels during optimization.
 
 With ``--manifest`` subjects come from the frozen cohort split
 (``benchmarks/protocol_v1.md``). Held-out test subjects cannot be selected.
+
+``--section-offset-mm``/``--section-noise-sd-mm`` simulate tracing error in the
+observed sections (``benchmarks/mitea_sensitivity_v1.md``); every method reads
+the perturbed sections and metrics always use the clean target.
 """
 
 import argparse
@@ -25,10 +29,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cardiac_common.cohort import enumerate_volumes, load_label
 from cardiac_common.interpolation import interpolate_sections, plane_sections
 from cardiac_common.gp import VARIANCE_STRIDE, gp_complete
+from cardiac_common.perturb import perturb_observations
 from cardiac_common.population import check_not_trained_on
 from cardiac_common.prior_inr import fit_prior_inr
 from cardiac_common.rbf import rbf_complete
-from cardiac_common.ssm import fit_ssm
+from cardiac_common.ssm import fit_ssm, mean_shape
 from cardiac_common.unet import UNet3D, predict_unet
 from cardiac_common.sparse import (
     evaluate_grid, plane_samples, reconstruction_metrics, select_planes,
@@ -105,24 +110,30 @@ def summarize(results):
     return summary
 
 
-def manifest_subjects(manifest, subset):
-    """Development subjects for ``subset``; the test split is never returned."""
+def manifest_subjects(manifest, subset, allow_test_evaluation=False):
+    """Return manifest subjects, requiring explicit opt-in for the test split."""
     folds = manifest["splits"]["folds"]
-    if subset == "confirmatory":
+    if subset == "test":
+        if not allow_test_evaluation:
+            raise ValueError("test evaluation requires --allow-test-evaluation")
+        chosen = [(s, None) for s in manifest["splits"]["test"]]
+    elif subset == "confirmatory":
         chosen = [(s, index) for index, fold in enumerate(folds) if index != 0 for s in fold]
     else:
         index = int(subset.removeprefix("fold"))
         chosen = [(s, index) for s in folds[index]]
     held_out = set(manifest["splits"]["test"])
-    if any(subject in held_out for subject, _ in chosen):
+    if subset != "test" and any(subject in held_out for subject, _ in chosen):
         raise RuntimeError("manifest fold overlaps the held-out test split")
+    if subset == "test" and set(subject for subject, _ in chosen) != held_out:
+        raise RuntimeError("test subset does not match the frozen held-out set")
     return sorted(chosen)
 
 
 def manifest_samples(args):
     """Yield protocol samples: scan 1 ED, foreground = any nonzero label."""
     manifest = json.loads(Path(args.manifest).read_text())
-    chosen = manifest_subjects(manifest, args.subset)
+    chosen = manifest_subjects(manifest, args.subset, args.allow_test_evaluation)
     if args.subjects:
         available = {subject for subject, _ in chosen}
         missing = sorted(set(args.subjects) - available)
@@ -173,12 +184,33 @@ def build_model(method, args, points, labels):
     return model, "uniform"
 
 
+def validate_test_population_models(population, manifest):
+    """Require final-test priors trained on the complete development cohort only."""
+    expected_training = {subject for fold in manifest["splits"]["folds"] for subject in fold}
+    test_subjects = set(manifest["splits"]["test"])
+    artifacts = ([population["ssm"]] if "ssm" in population else [])
+    artifacts.extend(population.get("unet", {}).values())
+    for artifact in artifacts:
+        actual_training = set(artifact["training_subjects"])
+        if actual_training != expected_training:
+            raise RuntimeError("final test evaluation requires population models trained on exactly "
+                               "the development subjects")
+        if artifact.get("manifest_sha256") != manifest["splits_sha256"]:
+            raise RuntimeError("population model split manifest does not match evaluation manifest")
+        if actual_training & test_subjects:
+            raise RuntimeError("population model training subjects overlap the held-out test set")
+
+
 def run(args):
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
     torch.set_num_threads(args.cpu_threads)
     if len(set(args.seeds)) != len(args.seeds):
         raise ValueError("seeds must not contain duplicates")
     split_info, samples = manifest_samples(args) if args.manifest else legacy_samples(args)
+    population = load_population_models(args)
+    if args.manifest and args.subset == "test" and population:
+        manifest = json.loads(Path(args.manifest).read_text())
+        validate_test_population_models(population, manifest)
 
     output = Path(args.run_dir)
     output.mkdir(parents=True, exist_ok=False)
@@ -187,13 +219,25 @@ def run(args):
     protocol = "mitea_sparse_planes_protocol_v1" if args.manifest else "fixed_sparse_binary_label_planes_v1"
     if set(args.methods) & set(PROTOCOL_V2):
         protocol = "mitea_sparse_planes_protocol_v2"
-    population = load_population_models(args)
+    protocol = args.protocol_name or protocol
+    perturbing = bool(args.section_offset_mm or args.section_noise_sd_mm)
     results = []
     for sample in samples:
         target = sample["occupancy_ed"].float()
         shape = tuple(target.shape)
         planes = select_planes(shape, args.num_planes, args.plane_layout, args.axial_fractions)
-        points, labels, observed = plane_samples(target, planes)
+        # Methods read only sample["observation_ed"] at the observed planes; metrics use the target.
+        sample["observation_ed"], perturbation = target, None
+        if perturbing:
+            if not np.allclose(np.linalg.norm(np.asarray(sample["affine"])[:3, :3], axis=0), 1.0):
+                raise RuntimeError("section perturbation assumes 1 mm isotropic voxels")
+            observation, counts = perturb_observations(
+                target.numpy(), planes, sample["subject"], args.plane_layout, args.section_offset_mm,
+                args.section_noise_sd_mm, args.section_noise_filter_mm)
+            sample["observation_ed"] = torch.from_numpy(observation.astype(np.float32))
+            perturbation = {"offset_mm": args.section_offset_mm, "noise_sd_mm": args.section_noise_sd_mm,
+                            "noise_filter_mm": args.section_noise_filter_mm, "planes": counts}
+        points, labels, observed = plane_samples(sample["observation_ed"], planes)
         digest = hashlib.sha256(observed.numpy().tobytes() + labels.numpy().tobytes()).hexdigest()
         save_dense = args.save_occupancy or sample["subject"] in set(args.save_occupancy_subjects or ())
         for method in args.methods:
@@ -213,6 +257,8 @@ def run(args):
                     "threshold": args.threshold, "eval_stride": args.eval_stride,
                     "device": str(device), "torch_version": str(torch.__version__),
                 }
+                if perturbation is not None:
+                    row["section_perturbation"] = perturbation
                 destination = output / method / sample["subject"] / ("deterministic" if seed is None
                                                                      else f"seed_{seed}")
                 destination.mkdir(parents=True)
@@ -244,15 +290,16 @@ def run(args):
     print(f"Results saved to {output}", flush=True)
 
 
-DETERMINISTIC = ("interpolation", "rbf", "ssm", "gp")
+DETERMINISTIC = ("interpolation", "rbf", "ssm", "gp", "mean_shape")
 V2_METHODS = ("rbf", "ssm", "unet", "gp")  # completed by complete_v2
 PROTOCOL_V2 = V2_METHODS + ("prior_inr",)
+REFERENCES = ("mean_shape",)  # also completed by complete_v2; ignores the sections
 
 
 def load_population_models(args):
     """Population artifacts, loaded once; U-Nets are keyed by training seed."""
     models = {}
-    if {"ssm", "prior_inr"} & set(args.methods):
+    if {"ssm", "prior_inr", "mean_shape"} & set(args.methods):
         models["ssm"] = torch.load(args.ssm_model, weights_only=False)
         models["ssm"]["path"] = args.ssm_model
     if "unet" in args.methods:
@@ -267,27 +314,32 @@ def load_population_models(args):
 
 
 def complete_v2(method, sample, planes, observed, args, device, seed, population):
-    """Run a protocol-v2 method; returns (binary or probability volume, row fields)."""
+    """Run a protocol-v2 method or reference; returns (binary or probability volume, row fields)."""
     target = sample["occupancy_ed"].numpy() >= 0.5
+    sections = sample.get("observation_ed", sample["occupancy_ed"]).numpy() >= 0.5  # read only where observed
     shape = target.shape
     observed = observed.numpy()
     if method == "gp":
-        mask, mean, sd, centres = gp_complete(plane_sections(target, planes), shape, args.gp_length,
-                                              args.gp_prior_mean, device)
+        mask, mean, sd, centres = gp_complete(plane_sections(sections, planes), shape, args.gp_length,
+                                              args.gp_prior_mean, device, uncertainty=not args.no_gp_uncertainty)
         fields = {"initialization": f"gp_matern52_length{args.gp_length}_mean{args.gp_prior_mean}",
                   "parameter_count": centres}
-        fields.update(gp_uncertainty_summary(mean, sd, target, observed))
+        if sd is not None:
+            fields.update(gp_uncertainty_summary(mean, sd, target, observed))
         return mask.astype(np.float32), fields
     if method == "rbf":
-        mask, centres = rbf_complete(plane_sections(target, planes), shape, args.rbf_kernel,
+        mask, centres = rbf_complete(plane_sections(sections, planes), shape, args.rbf_kernel,
                                      args.rbf_smoothing, device)
         return mask.astype(np.float32), {"initialization": f"rbf_{args.rbf_kernel}_smoothing{args.rbf_smoothing}",
                                          "parameter_count": centres + 4}
-    artifact = population[method] if method == "ssm" else population["unet"][seed]
+    artifact = population["ssm"] if method in ("ssm", "mean_shape") else population["unet"][seed]
     check_not_trained_on(sample["subject"], artifact)
     fields = {"population_model": artifact["path"], "training_subjects": len(artifact["training_subjects"])}
+    if method == "mean_shape":
+        fields.update(initialization="ssm_mean_shape", parameter_count=0)
+        return mean_shape(artifact, shape).astype(np.float32), fields
     if method == "ssm":
-        mask, info = fit_ssm(artifact, np.argwhere(observed), target[observed].astype(np.float32), shape,
+        mask, info = fit_ssm(artifact, np.argwhere(observed), sections[observed].astype(np.float32), shape,
                              args.ssm_modes, args.ssm_prior, device)
         fields.update(initialization=f"ssm_K{args.ssm_modes}_prior{args.ssm_prior}",
                       parameter_count=args.ssm_modes + 3, final_training_bce=info["final_loss"],
@@ -295,7 +347,7 @@ def complete_v2(method, sample, planes, observed, args, device, seed, population
         return mask.astype(np.float32), fields
     model = UNet3D().to(device)
     model.load_state_dict(artifact["state_dict"])
-    probability = predict_unet(model, observed, np.where(observed, target, False), shape, device)
+    probability = predict_unet(model, observed, np.where(observed, sections, False), shape, device)
     fields.update(initialization=f"unet_lr{artifact['lr']}_it{artifact['iterations']}",
                   parameter_count=sum(p.numel() for p in model.parameters()))
     return probability, fields
@@ -329,7 +381,8 @@ def evaluate_method(method, row, sample, planes, points, labels, observed, args,
     shape = tuple(target.shape)
     stride = args.eval_stride
     print(f"{sample['subject']} {method} seed={seed} planes={planes}", flush=True)
-    if method in V2_METHODS:
+    sections = sample.get("observation_ed", target)  # read only where observed
+    if method in V2_METHODS + REFERENCES:
         started = time.perf_counter()
         volume, fields = complete_v2(method, sample, planes, observed, args, device, seed, population)
         sync(device)
@@ -339,7 +392,7 @@ def evaluate_method(method, row, sample, planes, points, labels, observed, args,
         row.update(learning_rate=None, optimizer_steps=0, **fields)
     elif method == "interpolation":
         started = time.perf_counter()
-        mask, variant = interpolate_sections(plane_sections(target.numpy(), planes), shape,
+        mask, variant = interpolate_sections(plane_sections(sections.numpy(), planes), shape,
                                              args.plane_layout)
         probability = torch.from_numpy(mask[::stride, ::stride, ::stride].astype(np.float32))
         model, seconds, final_loss = None, time.perf_counter() - started, None
@@ -355,8 +408,8 @@ def evaluate_method(method, row, sample, planes, points, labels, observed, args,
             artifact = population["ssm"]
             check_not_trained_on(sample["subject"], artifact)
             started = time.perf_counter()
-            target_np = target.numpy() >= 0.5
-            prior, _ = fit_ssm(artifact, np.argwhere(observed.numpy()), target_np[observed.numpy()].astype(np.float32),
+            sections_np = sections.numpy() >= 0.5
+            prior, _ = fit_ssm(artifact, np.argwhere(observed.numpy()), sections_np[observed.numpy()].astype(np.float32),
                                shape, args.ssm_modes, args.ssm_prior, device)
             prior_seconds = time.perf_counter() - started
             torch.manual_seed(seed)
@@ -401,12 +454,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--run-dir", required=True, help="New output directory; never overwrites a run")
-    parser.add_argument("--methods", nargs="+", choices=("inr", "gaussian", "interpolation", "rbf", "ssm", "unet", "gp", "prior_inr"),
+    parser.add_argument("--methods", nargs="+", choices=("inr", "gaussian", "interpolation", "rbf", "ssm", "unet", "gp",
+                                                         "prior_inr", "mean_shape"),
                         default=["inr", "gaussian"])
+    parser.add_argument("--protocol-name", default=None, help="Protocol tag recorded in every result row")
     parser.add_argument("--manifest", default=None,
                         help="Frozen cohort manifest; selects subjects with --subset instead of --split")
-    parser.add_argument("--subset", choices=("fold0", "fold1", "fold2", "fold3", "fold4", "confirmatory"),
-                        help="Development fold, or folds 1-4 for the confirmatory report")
+    parser.add_argument("--subset", choices=("fold0", "fold1", "fold2", "fold3", "fold4", "confirmatory", "test"),
+                        help="Development fold, confirmatory development folds, or explicitly authorized test set")
+    parser.add_argument("--allow-test-evaluation", action="store_true",
+                        help="Required alongside --subset test; never permits test subjects for training")
     parser.add_argument("--subjects", nargs="+", default=None,
                         help="Restrict the manifest subset to these subjects (smoke checks)")
     parser.add_argument("--split", choices=("train", "val", "test"), default="val",
@@ -441,6 +498,13 @@ def main():
     parser.add_argument("--prior-inr-lr", type=float, default=1e-3, help="Protocol v2 prior_inr fine-tuning lr")
     parser.add_argument("--prior-inr-weight", type=float, default=0.0,
                         help="Protocol v2 prior_inr weight of the prior BCE during fine-tuning")
+    parser.add_argument("--no-gp-uncertainty", action="store_true", help="Skip the GP posterior SD summaries")
+    parser.add_argument("--section-offset-mm", type=float, default=0.0,
+                        help="Systematic tracing offset of observed sections (positive = outside the border)")
+    parser.add_argument("--section-noise-sd-mm", type=float, default=0.0,
+                        help="SD of smooth random boundary displacement of observed sections")
+    parser.add_argument("--section-noise-filter-mm", type=float, default=5.0,
+                        help="Gaussian filter SD of the boundary displacement field")
     parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument("--eval-chunk-size", type=int, default=4096)
     parser.add_argument("--eval-stride", type=int, default=1, help="Use >1 only for coarse smoke checks")
@@ -460,12 +524,20 @@ def main():
     if args.manifest:
         if not args.subset:
             parser.error("--manifest requires --subset")
+        if args.subset == "test" and not args.allow_test_evaluation:
+            parser.error("--subset test requires --allow-test-evaluation")
+        if args.allow_test_evaluation and args.subset != "test":
+            parser.error("--allow-test-evaluation is valid only with --subset test")
         if args.sample_indices is not None or args.all_subjects:
             parser.error("--sample-indices/--all-subjects apply only to the legacy split")
     elif args.subset or args.subjects:
         parser.error("--subset and --subjects require --manifest")
-    if {"ssm", "prior_inr"} & set(args.methods) and not args.ssm_model:
-        parser.error("--methods ssm/prior_inr require --ssm-model")
+    if {"ssm", "prior_inr", "mean_shape"} & set(args.methods) and not args.ssm_model:
+        parser.error("--methods ssm/prior_inr/mean_shape require --ssm-model")
+    if args.section_noise_sd_mm < 0 or args.section_noise_filter_mm <= 0:
+        parser.error("section noise SD must be non-negative and its filter SD positive")
+    if (args.section_offset_mm or args.section_noise_sd_mm) and not args.manifest:
+        parser.error("section perturbation requires --manifest subjects")
     if args.gp_length <= 0 or args.prior_inr_lr <= 0 or args.prior_inr_weight < 0:
         parser.error("GP length and prior_inr lr must be positive; prior_inr weight non-negative")
     if "unet" in args.methods and not args.unet_models:

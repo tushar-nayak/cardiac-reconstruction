@@ -10,7 +10,7 @@ from cardiac_common.interpolation import (
     section_extrusion_intersection, signed_distance_2d,
 )
 from cardiac_common.sparse import largest_component, reconstruction_metrics, select_planes
-from scripts.benchmark_sparse import manifest_subjects
+from scripts.benchmark_sparse import manifest_subjects, validate_test_population_models
 from scripts.summarize_benchmark import bootstrap_ci, holm, subject_means
 
 
@@ -100,12 +100,29 @@ class ManifestTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             manifest_subjects(self.manifest, "fold2")
 
+    def test_test_subset_requires_explicit_opt_in(self):
+        with self.assertRaises(ValueError):
+            manifest_subjects(self.manifest, "test")
+        self.assertEqual(manifest_subjects(self.manifest, "test", allow_test_evaluation=True),
+                         [("T1", None), ("T2", None)])
+
+    def test_test_population_models_must_use_all_development_subjects_only(self):
+        manifest = {**self.manifest, "splits_sha256": "frozen"}
+        subjects = [s for fold in manifest["splits"]["folds"] for s in fold]
+        artifact = {"training_subjects": subjects, "manifest_sha256": "frozen"}
+        validate_test_population_models({"ssm": artifact, "unet": {17: artifact}}, manifest)
+        artifact["training_subjects"] = subjects + ["T1"]
+        with self.assertRaises(RuntimeError):
+            validate_test_population_models({"ssm": artifact}, manifest)
+
     def test_frozen_manifest_folds_never_contain_test_subjects(self):
         path = Path(__file__).resolve().parents[1] / "benchmarks/splits/mitea_cohort_v1.json"
         manifest = json.loads(path.read_text())
         test = set(manifest["splits"]["test"])
         for subset in ("fold0", "fold1", "fold2", "fold3", "fold4", "confirmatory"):
             self.assertFalse(test & {s for s, _ in manifest_subjects(manifest, subset)})
+        self.assertEqual(test, {s for s, _ in manifest_subjects(
+            manifest, "test", allow_test_evaluation=True)})
 
 
 class SummaryTests(unittest.TestCase):

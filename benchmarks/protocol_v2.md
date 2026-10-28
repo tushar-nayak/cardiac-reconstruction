@@ -1,9 +1,12 @@
 # MITEA Sparse-Plane Reconstruction Benchmark Protocol v2
 
-**Status: DRAFT, not frozen.** Written 2026-10-20 after the v1 confirmatory run.
-It must be reviewed and frozen by the authors before any v2 method is run on
-folds 1–4. Until then, v2 methods may run on fold 0 only. Deviations after
-freezing are logged with a dated rationale, as in v1.
+**Status: frozen for one-time held-out test evaluation (2026-10-22).** Fold-0
+grids and selections are development evidence. The 26-subject test set has not
+been loaded or scored. This protocol supersedes the proposed folds-1–4 v2
+confirmatory analysis: those folds were used to train population models during
+fold-0 tuning and are not an independent v2 test set. The test set is evaluated
+once with the settings below; no tuning or method changes are allowed after
+test outcomes are inspected.
 
 ## Objective and relation to v1
 
@@ -25,7 +28,8 @@ Everything not changed here is inherited from v1 unchanged: cohort manifest,
 target (scan 1, ED, label union), plane layouts (orthogonal central; parallel
 axis-0 sections at 0.375/0.5/0.625 per v1 Amendment 1), threshold 0.5,
 metrics, missing-value handling, and the subject as the unit of inference.
-The 26-subject test split remains unused.
+At the time this protocol was frozen, the 26-subject test split had not been
+used; its one-time final evaluation is specified below.
 
 ## Methods
 
@@ -104,26 +108,40 @@ Ties within 0.002 go to the first configuration listed.
 Grid order for the tie rule is as listed, last factor fastest (for `gp`:
 ℓ = 10/m = 0, ℓ = 10/m = −10, ℓ = 20/m = 0, …).
 
-For fold-0 tuning, population models are trained on folds 1–4. This uses
-confirmatory subjects' labels as *training* data only; no fold 1–4 subject is
-evaluated, and fold-1–4 training losses are not used for selection.
+For fold-0 tuning, population models were trained on folds 1–4. Although no
+fold-1–4 predictions were scored during tuning, their labels influenced model
+selection through the learned population priors. The v2 results on these folds
+are therefore exploratory, not independent confirmation.
 
 The number of U-Net training seeds is fixed before freezing from measured
 training time: three seeds (17, 23, 42) if one training run takes at most 45
 minutes on the project GPU, otherwise seed 17 only.
 
-## Confirmatory evaluation (cross-fitting)
+## Frozen settings and final held-out test evaluation
 
-- For each confirmatory fold k ∈ {1, 2, 3, 4}, train the population models on
-  the development folds other than k (that is, fold 0 and the other three
-  confirmatory folds) with the frozen configuration, then evaluate fold k.
-  The four folds together give one prediction per confirmatory subject.
-- Every population-model artifact records its training subjects. The runner
-  must refuse to evaluate a subject that is in its model's training list or in
-  the test split.
-- v1 INR and interpolation results on folds 1–4 are reused as comparators.
-  The report must verify that the v2 observation fingerprints equal the v1
-  fingerprints for every subject and layout.
+The fold-0 selections are fixed before test access:
+
+- `rbf`: φ(r) = r³, λ = 0.01.
+- `ssm`: K = 20, λ = 0.001.
+- `unet`: learning rate 3e-4, 4,000 iterations, training seeds 17, 23, 42.
+- `gp`: Matérn-5/2 length ℓ = 20 mm, prior mean m = −10 mm.
+- `prior_inr`: β = 0, fine-tuning learning rate η = 1e-4; uses the selected
+  `ssm` configuration.
+- v1 comparators: INR settings from v1; Gaussian occupancy uses the selected
+  uniform initialization and learning rate 0.001; interpolation is unchanged.
+
+Train each population model once on all five development folds (108 subjects)
+using scan-1 ED labels only. Save its training-subject list and verify it is
+disjoint from the frozen 26-subject test set. Evaluate all methods on exactly
+those test subjects under both layouts. The runner rejects evaluation of any
+subject in a population model's training list and requires explicit
+`--allow-test-evaluation` to select the test subset. Save predictions only for
+MITEA_004 and MITEA_017 (the first two test IDs in manifest order, selected
+before loading any test labels). Verify that v2 and v1 comparators have
+identical observation fingerprints for each subject and layout.
+
+This is a one-time held-out evaluation (n = 26), not a cross-validation
+estimate. Do not pool it with the separate v1 86-subject confirmatory estimate.
 
 ## Statistical analysis
 
@@ -133,11 +151,8 @@ minutes on the project GPU, otherwise seed 17 only.
   over these ten.
 - **Secondary (descriptive, with bootstrap CIs, no Holm family):** `rbf` vs the
   v1 layout-specific interpolation; `gp` vs `rbf`; `unet` vs `ssm`;
-  `prior_inr` vs `ssm` (does fitting a field on top of the prior help?); GP
+  `prior_inr` vs `ssm`; Gaussian occupancy vs INR and interpolation; GP
   uncertainty summaries; all secondary metrics.
-- **Descriptive reference (proposed, see deviation log):** the folds-other-
-  than-k mean shape with no sections, per fold, as a floor for what the
-  population prior alone achieves.
 - Bootstrap: 10,000 replicates, RNG seed 2027, as in v1.
 - Largest-component sensitivity and pathology subgroups as in v1.
 
@@ -200,3 +215,69 @@ smoke check, `gp` was sped up (float32 kernel values) after a 145 s per
 subject first version; the accuracy check is reported in Methods. The
 primary family grows from 6 to 10 tests; Holm correction covers all 10.
 No fold-1–4 subject has been evaluated by any v2 method.
+
+### 2026-10-21 — Fold-0 selection for `gp` (rule applied as written)
+
+Six configurations × two layouts × 22 subjects, 0 failed runs
+(`runs/protocol_v2_selection/fold0_gp.json`). Selected ℓ = 20 mm, m = −10 mm:
+unobserved Dice 0.9596 orthogonal / 0.8987 axial, average 0.9291 (best
+outright; next ℓ = 40, m = −10 at 0.9125). The negative prior mean mattered
+most on the parallel layout (ℓ = 20: 0.683 with m = 0 vs 0.899 with m = −10).
+Descriptive uncertainty for the selected configuration (median over
+subjects): error AUROC 0.994 orthogonal / 0.914 axial; share of
+misclassified unobserved voxels within 1.96 SD of zero 1.000 / 0.986.
+`prior_inr` tuning started after `gp` finished.
+
+### 2026-10-21 — Fold-0 selection for `prior_inr` (rule applied as written)
+
+Six configurations × two layouts × 22 subjects × 3 seeds, 0 failed runs
+(`runs/protocol_v2_selection/fold0_prior_inr.json`). Selected β = 0,
+η = 1e-4: unobserved Dice 0.9737 orthogonal / 0.9690 axial, average 0.9713.
+β = 0.1, η = 1e-4 scored 0.9721, within the 0.002 tie margin, so the earlier
+β = 0 is selected. All six configurations lay between 0.9665 and 0.9721.
+Median 26-connected component count was 1 in every configuration; median
+fit time 8.7 s (β = 0) including the shape-model fit. For context, `ssm`
+alone (same artifact and settings) scored 0.9621 / 0.9628 on fold 0.
+
+### 2026-10-22 — Final held-out evaluation design (frozen before test access)
+
+The authors authorized one-time use of the 26-subject test set. Review of the
+original cross-fitting proposal found that folds 1–4 contributed labels to the
+population models used in fold-0 tuning; those folds are consequently not
+described as independent v2 confirmation. Selected settings above are frozen
+without consulting test labels or scores. Final population models will be
+trained on folds 0–4 only, with the test set excluded. The test set will be
+evaluated once; failures and deviations will be reported. The original v1
+protocol and its 86-subject estimate remain unchanged.
+
+### 2026-10-22 — Held-out test results (one-time evaluation, as frozen)
+
+Final population models were trained on folds 0–4 (108 subjects; SSM and
+three U-Net seeds) and evaluated once on the 26 test subjects with
+`scripts/run_protocol_v2_test.sh`. 416/416 runs succeeded in each layout,
+0 failures, 0 empty predictions; every subject has a single supervision
+fingerprint per layout, so all methods saw identical observations. Report:
+`runs/protocol_v2_test_20261022_report.{json,tex}`.
+
+Unobserved-voxel Dice, mean ± SD over subjects (orthogonal / axial):
+
+| Method | Orthogonal | Axial |
+| --- | --- | --- |
+| `unet` | 0.968 ± 0.007 | 0.968 ± 0.008 |
+| `prior_inr` | 0.969 ± 0.006 | 0.967 ± 0.007 |
+| `rbf` | 0.965 ± 0.007 | 0.899 ± 0.019 |
+| `gp` | 0.956 ± 0.010 | 0.897 ± 0.014 |
+| `ssm` | 0.954 ± 0.011 | 0.956 ± 0.010 |
+| v1 INR | 0.933 ± 0.008 | 0.515 ± 0.036 |
+| v1 interpolation | 0.923 ± 0.012 | 0.552 ± 0.029 |
+| Gaussian occupancy | 0.902 ± 0.012 | 0.814 ± 0.034 |
+
+Primary family: all 10 comparisons favor the v2 method over INR (Holm
+p = 3.0e-7 each). Orthogonal mean gains +0.021 (`ssm`) to +0.036
+(`prior_inr`), with 25–26/26 subjects improved; axial gains +0.38 (`gp`) to
++0.45 (`unet`, `prior_inr`), 26/26 improved. Secondary (descriptive): `gp`
+did not beat `rbf` (orthogonal −0.009, 0/26 higher; axial −0.002, CI
+−0.010 to +0.005); `unet` and `prior_inr` exceed `ssm` by +0.011 to +0.015;
+Gaussian occupancy is below INR on orthogonal (−0.032, 0/26) but above it on
+axial (+0.299). This 26-subject estimate is not pooled with the v1
+86-subject estimate.

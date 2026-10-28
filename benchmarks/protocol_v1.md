@@ -137,7 +137,8 @@ document it, and restart the affected fold-0 selection before proceeding.
   replicates; bootstrap RNG seed 2027). Seeds are averaged before resampling.
 - Pathology subgroup results are descriptive only, with subgroup counts and no
   confirmatory significance claims.
-- The 26-subject test set is not part of any estimate in this manuscript.
+- The original v1 estimate excludes the 26-subject test set. A later author-
+  approved test evaluation for protocol v2 is logged at the end of this file.
 
 ## Artifacts and reporting
 
@@ -216,6 +217,16 @@ per interpolation layout); 0 failed runs, 0 empty predictions, no interruptions
 or reruns. Partial results were not inspected while runs were in progress. The
 confirmatory report is `runs/protocol_v1_confirmatory_report.json` (with `.tex`).
 The test split was not loaded.
+
+### 2026-10-22 — Test-set use authorized for the separate v2 evaluation
+
+The authors authorized one-time use of the frozen 26-subject test set for the
+final protocol-v2 evaluation. The v1 INR, Gaussian, and interpolation methods
+will be rerun on these subjects only as matched comparators, using the v1
+settings without further selection. This does not alter the original v1
+86-subject estimate or its fold-0 selection. The test labels remain excluded
+from all training and tuning; see `benchmarks/protocol_v2.md` for the frozen
+test-evaluation design.
 
 Analyses added after the confirmatory run, and therefore not prespecified:
 the MITEA_071 isosurface panel and per-method fitting times (both descriptive).

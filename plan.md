@@ -1,6 +1,6 @@
-# Plan: full-cohort sparse benchmark → arXiv v1
+# Plan: sparse-plane cardiac reconstruction benchmark → arXiv
 
-Goal: turn the manuscript in `../heart-maker-report` from a one-subject pilot
+Goal: turn the manuscript in `../cardiac-recon-report` from a one-subject pilot
 into a defensible preprint by running a subject-level sparse-plane benchmark on
 MITEA.
 
@@ -310,21 +310,60 @@ are evaluated on, and never see the test split:
 - [x] Protocol v2 draft: methods, grids (6 + 6), Holm family 6 → 10, and a
       disclosure that both were added after the first three were tuned.
 - [x] Tests (64 pass).
-- [ ] Fold-0 grids running in tmux (`v2gp`, then `v2prior_inr`); select and log.
+- [x] Fold-0 grids: `gp` ℓ 20 mm, m −10 mm (0.960 / 0.899); `prior_inr` β 0, η 1e-4 (0.974 / 0.969). Logged.
 
-### Phase 10: Confirmatory cross-fitting (about 1 day of GPU)
-- [ ] Train population models for k = 1..4; run all three methods on each fold.
-- [ ] Report: v2 methods + v1 comparators, 86 subjects, Holm over 10.
+### Phase 10: One-time held-out test evaluation (protocol v2)
+- [x] Audit fold roles. Fold-1–4 labels entered the population models used for
+      fold-0 tuning, so those folds cannot serve as independent v2 confirmation.
+- [x] Author authorized one-time use of the frozen 26-subject test set.
+- [x] Freeze v2 settings and train/test boundary in
+      `benchmarks/protocol_v2.md`; all population models train only on folds 0–4.
+- [x] Train final SSM and U-Net population models on folds 0–4 (108 subjects).
+- [x] Evaluate v1 comparators, v2 methods, and secondary Gaussian occupancy on
+      the test set under both layouts: 416/416 runs per layout, 0 failures,
+      identical supervision fingerprints across methods.
+- [x] Summarize: all 10 primary comparisons favor v2 over INR (Holm p 3e-7);
+      best `unet`/`prior_inr` ≈ 0.968 on both layouts. Logged in the protocol.
+
+### Phase 10b: FeEcho4D external radial-view evaluation (exploratory)
+- [x] Freeze `benchmarks/feecho4d_external_protocol.md` before scoring.
+- [x] Run INR and Gaussian on 52 annotated subjects × 3 seeds (312/312, 0 failures).
+- [x] Paired summary: INR 0.918 vs Gaussian 0.805 pooled Dice; Gaussian − INR
+      −0.113 (CI −0.120 to −0.105), lower in 52/52 subjects. Logged in the protocol.
+
+### Phase 10c: MITEA NeRF synthetic-rendering ablation (exploratory)
+- [x] Freeze `benchmarks/nerf_mitea_ablation_v1.md`; development fold 0 only.
+- [x] Screening 408/408 fits (8 subjects × 17 configs × 3 seeds); selected
+      `viewdir_off`, `position_pe12`. Confirmation 90/90 on 10 disjoint subjects:
+      Dice 0.990 / 0.968 vs baseline 0.944, both 10/10 higher.
+- [x] Results in `benchmarks/nerf_mitea_ablation_v1_results.md`. Synthetic
+      rendering only; outside the sparse-plane manuscript.
+
+### Phase 10d: Development-cohort sensitivity analyses (before write-up)
+- [ ] Review and freeze `benchmarks/mitea_sensitivity_v1.md`: (A) noisy and
+      biased sections, (B) healthy-only priors and training-set size, (C) plane
+      count and the mean-shape reference. Folds 1–4; the test set stays closed.
+- [ ] Implement: section perturbation, `mean_shape`, subject-list training,
+      orchestration and summary scripts; smoke-check on MITEA_007 only.
+- [ ] Train cross-fitted priors, run A → C → B1 → B2 (about 36 GPU-hours).
+- [ ] Summarize in `benchmarks/mitea_sensitivity_v1_results.md`.
 
 ### Phase 11: Write-up
-- [ ] arXiv version: v1 + v2 benchmark as the main result.
+- [ ] Make root `main.tex` the single definitive manuscript: v1 development-
+      cohort results as context; locked v2 test-set evidence as final evaluation.
+- [ ] Rebuild figures/tables from machine-readable artifacts; archive the ISBI
+      four-page draft as superseded, not an alternate current manuscript.
+- [ ] Resolve data-use/ethics, author contributions, funding/conflicts, and
+      AI-use disclosure with all authors before arXiv submission.
 - [ ] Follow-up: view misplacement and apical layouts (the `rbf` method
       already handles arbitrary orientations), EF endpoint vs Simpson.
 
 ## Open decisions
 
-1. **Test-set policy (resolved):** keep the held-out test set untouched for the
-   later study; report the 86 development subjects not used for fold-0 tuning.
+1. **Test-set policy (resolved):** use the frozen 26-subject test set once for
+   protocol v2, after all settings are frozen; use development labels only for
+   population training and fold-0 tuning. Keep the v1 86-subject estimate
+   separate and do not pool the two evaluation cohorts.
 2. **Gaussian method (resolved):** keep it secondary and compare only the
    predeclared recipes/settings in the protocol.
 
