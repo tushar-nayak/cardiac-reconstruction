@@ -371,7 +371,7 @@ are evaluated on, and never see the test split:
 - [x] Rebuild figures/tables from machine-readable artifacts
       (`make_final_figures.py`, `make_sensitivity_assets.py`, `make_apical_ef_assets.py`); arXiv source
       package via `make_arxiv_package.sh`. (ISBI track dropped.)
-- [ ] Verify every reference against its primary source.
+- [x] Verify every reference against its primary source (2026-11-03; 43 cited entries).
 - [ ] Resolve data-use/ethics, author contributions, funding/conflicts, and
       AI-use disclosure with all authors before arXiv submission.
 
