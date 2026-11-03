@@ -68,6 +68,26 @@ pilot is retained separately in its
 [results](benchmarks/feecho4d_external_results.md); those pilot scores should
 not be presented as the full external-cohort comparison.
 
+### Sensitivity analyses
+
+Development-cohort sensitivity analyses (folds 1–4, n = 86) test the v2
+conclusion under tracing noise and bias, healthy-only and small population
+training sets, and one to six planes. See the
+[frozen protocol](benchmarks/mitea_sensitivity_v1.md) and
+[results](benchmarks/mitea_sensitivity_v1_results.md); everything is run by
+[`run_sensitivity_v1.sh`](scripts/run_sensitivity_v1.sh) and summarized by
+[`summarize_sensitivity.py`](scripts/summarize_sensitivity.py).
+
+### Apical-view ejection fraction
+
+A development-cohort study (folds 1–4, n = 86) compares cavity volumes and EF
+from 3D reconstruction of two or three apical views with the biplane Simpson
+method on the same views, with and without view misplacement. See the
+[frozen protocol](benchmarks/mitea_apical_ef_v1.md) and
+[results](benchmarks/mitea_apical_ef_v1_results.md); everything is run by
+[`run_apical_ef_v1.sh`](scripts/run_apical_ef_v1.sh) and summarized by
+[`summarize_apical_ef.py`](scripts/summarize_apical_ef.py).
+
 ### Exploratory NeRF ablation
 
 The MITEA NeRF pilot and ablation are separate from the paper's sparse-plane

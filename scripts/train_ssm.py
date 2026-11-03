@@ -16,7 +16,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from cardiac_common.cohort import enumerate_volumes, load_label
+from cardiac_common.cohort import LV_CAVITY, enumerate_volumes, load_label
 from cardiac_common.population import listed_training_subjects, training_subjects
 from cardiac_common.ssm import build_ssm
 
@@ -30,6 +30,10 @@ def main():
     source.add_argument("--train-subjects-file", default=None,
                         help="JSON file with a \"subjects\" list of development subjects")
     parser.add_argument("--max-modes", type=int, default=40)
+    parser.add_argument("--target", choices=("union", "cavity"), default="union",
+                        help="Label union (protocol v1/v2) or LV cavity only")
+    parser.add_argument("--phases", nargs="+", choices=("ED", "ES"), default=["ED"],
+                        help="Scan-1 phases used as training shapes")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     output = Path(args.output)
@@ -43,9 +47,11 @@ def main():
         subjects = listed_training_subjects(manifest, listed)
     paths = {(v.subject, v.scan, v.phase): v.label_path for v in enumerate_volumes(args.data_dir)}
     started = time.perf_counter()
-    masks = [load_label(paths[(subject, 1, "ED")])[0] > 0 for subject in subjects]
+    loaded = [load_label(paths[(subject, 1, phase)]) for subject in subjects for phase in args.phases]
+    masks = [label == LV_CAVITY if args.target == "cavity" else label > 0 for label, _ in loaded]
     artifact = build_ssm(masks, subjects, args.max_modes)
     artifact.update(method="ssm", train_folds=args.train_folds, subject_list=args.train_subjects_file,
+                    target=args.target, phases=args.phases,
                     manifest_sha256=manifest["splits_sha256"],
                     build_seconds=time.perf_counter() - started)
     output.parent.mkdir(parents=True, exist_ok=True)

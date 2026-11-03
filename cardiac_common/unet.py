@@ -63,8 +63,11 @@ def jittered_planes(shape, layout, fractions, rng):
     return moved if len(set(moved)) == len(moved) else planes
 
 
-def train_unet(masks, iterations, lr, seed, device, log_every=500, snapshots=()):
+def train_unet(masks, iterations, lr, seed, device, log_every=500, snapshots=(), observe_fn=None):
     """Train on native-grid training masks.
+
+    ``observe_fn(index, rng) -> (observed, values)`` replaces the protocol
+    layouts with another observation model (for example apical views).
 
     Returns (model, per-interval mean losses, seconds, {step: state_dict} for
     ``snapshots``). With a constant learning rate, the snapshot at step n equals
@@ -81,8 +84,11 @@ def train_unet(masks, iterations, lr, seed, device, log_every=500, snapshots=())
     model.train()
     for step in range(1, iterations + 1):
         index = int(rng.integers(len(masks)))
-        layout, fractions = LAYOUTS[int(rng.integers(len(LAYOUTS)))]
-        observed, values = observe(masks[index], jittered_planes(masks[index].shape, layout, fractions, rng))
+        if observe_fn is None:
+            layout, fractions = LAYOUTS[int(rng.integers(len(LAYOUTS)))]
+            observed, values = observe(masks[index], jittered_planes(masks[index].shape, layout, fractions, rng))
+        else:
+            observed, values = observe_fn(index, rng)
         inputs = torch.from_numpy(observation_channels(observed, values))[None].to(device)
         target = targets[index][None, None].to(device)
         with torch.autocast(device.type, enabled=device.type == "cuda"):

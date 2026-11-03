@@ -340,23 +340,40 @@ are evaluated on, and never see the test split:
       rendering only; outside the sparse-plane manuscript.
 
 ### Phase 10d: Development-cohort sensitivity analyses (before write-up)
-- [ ] Review and freeze `benchmarks/mitea_sensitivity_v1.md`: (A) noisy and
+- [x] Freeze `benchmarks/mitea_sensitivity_v1.md` (2026-10-28): (A) noisy and
       biased sections, (B) healthy-only priors and training-set size, (C) plane
       count and the mean-shape reference. Folds 1–4; the test set stays closed.
-- [ ] Implement: section perturbation, `mean_shape`, subject-list training,
-      orchestration and summary scripts; smoke-check on MITEA_007 only.
-- [ ] Train cross-fitted priors, run A → C → B1 → B2 (about 36 GPU-hours).
-- [ ] Summarize in `benchmarks/mitea_sensitivity_v1_results.md`.
+- [x] Implement: section perturbation, `mean_shape`, subject-list training,
+      orchestration and summary scripts; smoke-checked on MITEA_007 only
+      (clean path reproduces v2 fold-0 scores). 88 tests pass.
+- [x] Train cross-fitted priors, run A → C → B1 → B2: 104/104 units,
+      0 failures (completed 2026-10-29).
+- [x] Summarize in `benchmarks/mitea_sensitivity_v1_results.md`: priors stay
+      ahead under all stresses; `ssm` is most robust to tracing noise; ±2 mm
+      bias → about ±45 mL for every method; healthy-only priors cost < 0.01.
+
+### Phase 10e: Apical-view EF endpoint versus Simpson
+- [x] Freeze `benchmarks/mitea_apical_ef_v1.md` (2026-11-02): biplane and
+      triplane apical views, misplacement none / 5°·3 mm / 10°·5 mm, known
+      and assumed pose, LV cavity at ED and ES; folds 1–4, test set closed.
+- [x] Implement `cardiac_common/apical.py`, cavity/ES training options,
+      `benchmark_apical.py`, `summarize_apical_ef.py`; 93 tests pass.
+- [x] Run 2026-11-02/03: 4/4 units, 8,084 rows, 0 failures.
+- [x] Results in `benchmarks/mitea_apical_ef_v1_results.md`: with known pose,
+      shape priors cut EF error from 2.7 → 0.8 pp (5°/3 mm) and 6.0 → 1.1 pp
+      (10°/5 mm) vs Simpson; no material gain with perfect views; with
+      assumed pose the gain shrinks to < 1 pp.
 
 ### Phase 11: Write-up
-- [ ] Make root `main.tex` the single definitive manuscript: v1 development-
-      cohort results as context; locked v2 test-set evidence as final evaluation.
-- [ ] Rebuild figures/tables from machine-readable artifacts; archive the ISBI
-      four-page draft as superseded, not an alternate current manuscript.
+- [x] Make root `main.tex` the single definitive manuscript: v1 development-
+      cohort results as context; locked v2 test-set evidence as final
+      evaluation; sensitivity analyses as a descriptive results section.
+- [x] Rebuild figures/tables from machine-readable artifacts
+      (`make_final_figures.py`, `make_sensitivity_assets.py`, `make_apical_ef_assets.py`); arXiv source
+      package via `make_arxiv_package.sh`. (ISBI track dropped.)
+- [ ] Verify every reference against its primary source.
 - [ ] Resolve data-use/ethics, author contributions, funding/conflicts, and
       AI-use disclosure with all authors before arXiv submission.
-- [ ] Follow-up: view misplacement and apical layouts (the `rbf` method
-      already handles arbitrary orientations), EF endpoint vs Simpson.
 
 ## Open decisions
 

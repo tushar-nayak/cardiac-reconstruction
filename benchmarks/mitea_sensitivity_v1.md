@@ -1,8 +1,8 @@
 # MITEA Sensitivity Analyses v1
 
-**Status: draft, not frozen (2026-10-28).** Freeze after author review and
-before any run on the evaluation cohort. Until then, smoke checks may use only
-the fold-0 subject MITEA_007.
+**Status: frozen (2026-10-28) before any run on the evaluation cohort.**
+Smoke checks used only the fold-0 subject MITEA_007 (see the deviation log).
+No setting may change after evaluation-cohort outputs are inspected.
 
 ## Purpose
 
@@ -180,20 +180,22 @@ count at which each per-subject method comes within 0.01 of `prior_inr`.
 
 Population models: 21 U-Net trainings (4 reference, 1 H, 4 M66, 12 B2) at
 about 28 minutes each, about 10 h in total, plus 21 SSM builds at about
-1.5 minutes each. Evaluation estimates come from v2 test timings, without
-Gaussian occupancy and with one seed: about 2 minutes per subject for both
-layouts, which gives about 14 h (A), 8 h (C), and 3 h (B).
+1.5 minutes each. Evaluation estimates come from single-process smoke timings
+on MITEA_007: about 2 minutes per subject for both layouts in Study A, giving
+about 14 h (A), 8 h (C), and 6 h (B). The total is about 39 GPU-hours.
 
-Run order: train the reference priors → A → C → B1 → B2. Two evaluation
-processes may share the GPU; U-Net training runs alone.
+Run order: train the reference priors → A → C → B1 → B2. Training and
+evaluation run one process at a time.
 
 ## Reproducibility
 
 Outputs go under the git-ignored `runs/mitea_sensitivity_v1/`, with one
-directory per study, fold, and condition. The orchestration script refuses to
-overwrite existing outputs. Subject lists for H, M66, and the B2 subsets are
-written to JSON before any training and recorded in each model artifact.
-Results are summarized in `benchmarks/mitea_sensitivity_v1_results.md`.
+directory per study, fold, and condition. `scripts/run_sensitivity_v1.sh`
+runs every step. It skips finished units and refuses to overwrite a partial
+one. Subject lists for H, M66, and the B2 subsets are written to JSON by
+`scripts/make_sensitivity_subsets.py` before any training and recorded in each
+model artifact. `scripts/summarize_sensitivity.py` computes the estimands
+above. Results are summarized in `benchmarks/mitea_sensitivity_v1_results.md`.
 
 ## Deviation log
 
@@ -209,3 +211,38 @@ results were known. Design facts consulted:
 
 No method has been run under any perturbation, prior variant, or plane count
 described here.
+
+### 2026-10-28 — Implementation and smoke checks before freezing
+
+Implementation:
+
+- section perturbation in `cardiac_common/perturb.py`, applied by
+  `scripts/benchmark_sparse.py` (`--section-offset-mm`,
+  `--section-noise-sd-mm`, `--section-noise-filter-mm`), with SciPy's default
+  reflecting boundary for the Gaussian filter;
+- the `mean_shape` reference;
+- `--no-gp-uncertainty`;
+- `--train-subjects-file` for `scripts/train_ssm.py` and
+  `scripts/train_unet.py`.
+
+Without a perturbation, the runner's inputs are unchanged.
+
+Smoke checks used MITEA_007 only, with the v2 fold-0 tuning models (trained on
+folds 1–4). Outputs are in `runs/mitea_sensitivity_v1_smoke_20261028/`.
+
+- The clean path reproduced the v2 fold-0 tuning scores (unobserved Dice to
+  four decimals) for `inr`, `rbf`, `ssm`, `unet`, `gp`, and `prior_inr` on
+  both layouts.
+- These configurations completed without failures, each with one observation
+  fingerprint per run:
+  - random 2 mm (orthogonal) and inside 2 mm (parallel);
+  - one and six parallel sections, and one orthogonal plane;
+  - a 10-subject SSM (9 modes) and a short U-Net run trained from a subject
+    list.
+- Two evaluation processes run at once filled the 8 GB GPU (7.97 GB) and
+  slowed `gp` about fivefold and `prior_inr` about sevenfold. Training and
+  evaluation therefore run one process at a time.
+
+The subject lists were generated and verified by
+`scripts/make_sensitivity_subsets.py`. No evaluation-cohort subject has been
+run.
